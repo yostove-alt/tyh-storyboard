@@ -956,20 +956,25 @@ firebase.initializeApp({
   appId:             "1:762941888788:web:7912671e284bf72d33ca01"
 });
 
-const SCENES_REF = firebase.database().ref('judoboards/v2');
+const SCENES_REF = firebase.database().ref('judoboards/v3');
 let lastSyncedAt = 0;
 let cloudReady = false;
 
 function extractPayload(raw) {
-  // Handles {scenes:[...], savedAt:123} or legacy plain array
   if (!raw) return null;
-  if (Array.isArray(raw)) return { scenes: raw, savedAt: 0 };
-  if (raw.scenes && Array.isArray(raw.scenes)) return raw;
-  // Firebase sometimes returns array-like objects — convert
-  if (typeof raw === 'object') {
-    const arr = Object.values(raw);
-    if (arr.length && typeof arr[0] === 'object' && arr[0].id) return { scenes: arr, savedAt: 0 };
+  // Current format: scenesJson string avoids Firebase array mangling
+  if (raw.scenesJson) {
+    try {
+      const s = JSON.parse(raw.scenesJson);
+      if (Array.isArray(s) && s.length) return { scenes: s, savedAt: raw.savedAt || 0 };
+    } catch(e) {}
   }
+  // Legacy formats
+  if (raw.scenes) {
+    const s = Array.isArray(raw.scenes) ? raw.scenes : Object.values(raw.scenes).filter(v => v && v.id);
+    if (s.length) return { scenes: s, savedAt: raw.savedAt || 0 };
+  }
+  if (Array.isArray(raw) && raw.length) return { scenes: raw, savedAt: 0 };
   return null;
 }
 
@@ -979,15 +984,16 @@ function saveToCloud() {
   btn.textContent = '☁ Saving…';
   btn.disabled = true;
   const savedAt = Date.now();
-  SCENES_REF.set({ scenes, savedAt })
+  lastSyncedAt = savedAt; // set before write so the echo is ignored in onValue
+  SCENES_REF.set({ scenesJson: JSON.stringify(scenes), savedAt })
     .then(() => {
-      lastSyncedAt = savedAt;
       localStorage.setItem('jdb_savedAt', String(savedAt));
       toast('Saved to cloud ✓');
       btn.textContent = '☁ Save';
       btn.disabled = false;
     })
     .catch(e => {
+      lastSyncedAt = 0;
       toast('Save failed — check connection');
       btn.textContent = '☁ Save';
       btn.disabled = false;
@@ -998,19 +1004,14 @@ function saveToCloud() {
 let initialLoad = true;
 SCENES_REF.on('value', snap => {
   cloudReady = true;
-
   if (initialLoad) {
     initialLoad = false;
-    if (!snap.exists()) return; // cloud empty — keep local, user will Save when ready
-
+    if (!snap.exists()) return;
     const payload = extractPayload(snap.val());
-    if (!payload || !payload.scenes.length) return;
-
+    if (!payload) return;
     const localSavedAt = parseInt(localStorage.getItem('jdb_savedAt') || '0');
     lastSyncedAt = payload.savedAt;
-
     if (payload.savedAt > localSavedAt) {
-      // Cloud is newer than anything saved locally — pull it
       scenes = payload.scenes;
       localStorage.setItem('jdb_v4', JSON.stringify(scenes));
       localStorage.setItem('jdb_savedAt', String(payload.savedAt));
@@ -1019,12 +1020,10 @@ SCENES_REF.on('value', snap => {
     }
     return;
   }
-
-  // Real-time: another device saved
+  // Real-time update from another device
   if (!snap.exists()) return;
   const payload = extractPayload(snap.val());
-  if (!payload || !payload.scenes.length) return;
-  if (payload.savedAt <= lastSyncedAt) return; // not newer than what we have
+  if (!payload || payload.savedAt <= lastSyncedAt) return;
   lastSyncedAt = payload.savedAt;
   scenes = payload.scenes;
   localStorage.setItem('jdb_v4', JSON.stringify(scenes));

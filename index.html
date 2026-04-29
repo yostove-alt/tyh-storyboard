@@ -971,7 +971,7 @@ function saveToCloud() {
   lastSyncedAt = savedAt;
   localStorage.setItem('jdb_savedAt', String(savedAt));
   const withImg = scenes.filter(s=>s.media&&s.media.length>0).length;
-  toast('Pushing: '+scenes.length+' scenes, '+withImg+' with images', 4000);
+  alert('Pushing to Firebase:\n'+scenes.length+' scenes\n'+withImg+' scenes with images\n\nScenes with media:\n'+scenes.filter(s=>s.media&&s.media.length).map(s=>s.title+': '+s.media.length+' image(s)').join('\n'));
   SCENES_REF.set({ scenesJson: JSON.stringify(scenes), savedAt })
     .then(() => { toast('Saved to cloud ✓'); btn.textContent = '☁ Save'; btn.disabled = false; })
     .catch(e => { toast('Save failed: ' + e.code); btn.textContent = '☁ Save'; btn.disabled = false; console.error(e); });

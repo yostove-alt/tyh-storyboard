@@ -424,7 +424,7 @@ let lbMedia=[];let lbIdx=0;
 let dragId=null;
 
 function loadScenes(){try{const s=localStorage.getItem('jdb_v4');if(s){const p=JSON.parse(s);if(p&&p.length)return p;}}catch(e){}return JSON.parse(JSON.stringify(INIT));}
-function save(){localStorage.setItem('jdb_v4',JSON.stringify(scenes));}
+function save(){localStorage.setItem('jdb_v4',JSON.stringify(scenes));localStorage.setItem('jdb_localAt',String(Date.now()));}
 function toast(msg,d=2200){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),d);}
 
 // ── PANEL ──
@@ -980,10 +980,13 @@ function applyCloudData(raw, isRealtime) {
   if (!Array.isArray(remoteScenes) || !remoteScenes.length) return;
   const remoteSavedAt = raw.savedAt || 0;
   if (remoteSavedAt <= lastSyncedAt) return;
+  // Don't overwrite local edits that are newer than this cloud save
+  const localEditedAt = parseInt(localStorage.getItem('jdb_localAt') || '0');
+  if (remoteSavedAt < localEditedAt) return;
   lastSyncedAt = remoteSavedAt;
   scenes = remoteScenes;
   localStorage.setItem('jdb_v4', JSON.stringify(scenes));
-  localStorage.setItem('jdb_savedAt', String(remoteSavedAt));
+  localStorage.setItem('jdb_localAt', String(remoteSavedAt));
   render();
   toast(isRealtime ? 'Board updated from another device ↺' : 'Synced from cloud ✓');
 }

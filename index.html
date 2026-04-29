@@ -966,35 +966,48 @@ function saveToCloud() {
   btn.textContent = '☁ Saving…';
   btn.disabled = true;
   const savedAt = Date.now();
-  lastSyncedAt = savedAt; // stamp before write so onValue echo is ignored
+  lastSyncedAt = savedAt;
   localStorage.setItem('jdb_savedAt', String(savedAt));
   SCENES_REF.set({ scenesJson: JSON.stringify(scenes), savedAt })
     .then(() => { toast('Saved to cloud ✓'); btn.textContent = '☁ Save'; btn.disabled = false; })
-    .catch(e => { toast('Save failed — check connection'); btn.textContent = '☁ Save'; btn.disabled = false; console.error(e); });
+    .catch(e => { toast('Save failed: ' + e.code); btn.textContent = '☁ Save'; btn.disabled = false; console.error(e); });
 }
 
-let firstFire = true;
-SCENES_REF.on('value', snap => {
-  cloudReady = true;
-  if (!snap.exists()) { firstFire = false; return; }
-
-  const raw = snap.val();
-  if (!raw || !raw.scenesJson) { firstFire = false; return; }
-
+function applyCloudData(raw, isRealtime) {
+  if (!raw || !raw.scenesJson) return;
   let remoteScenes;
-  try { remoteScenes = JSON.parse(raw.scenesJson); } catch(e) { firstFire = false; return; }
-  if (!Array.isArray(remoteScenes) || !remoteScenes.length) { firstFire = false; return; }
-
+  try { remoteScenes = JSON.parse(raw.scenesJson); } catch(e) { toast('Cloud data unreadable'); return; }
+  if (!Array.isArray(remoteScenes) || !remoteScenes.length) return;
   const remoteSavedAt = raw.savedAt || 0;
-  if (remoteSavedAt <= lastSyncedAt) { firstFire = false; return; } // our own echo
-
+  if (remoteSavedAt <= lastSyncedAt) return;
   lastSyncedAt = remoteSavedAt;
   scenes = remoteScenes;
   localStorage.setItem('jdb_v4', JSON.stringify(scenes));
   localStorage.setItem('jdb_savedAt', String(remoteSavedAt));
   render();
-  if (!firstFire) toast('Board updated from another device ↺');
-  firstFire = false;
+  toast(isRealtime ? 'Board updated from another device ↺' : 'Synced from cloud ✓');
+}
+
+// Initial load via get() — surfaces permission errors explicitly
+SCENES_REF.get()
+  .then(snap => {
+    cloudReady = true;
+    if (!snap.exists()) { toast('Cloud empty — click ☁ Save to push your data'); return; }
+    applyCloudData(snap.val(), false);
+  })
+  .catch(e => {
+    cloudReady = true;
+    toast('Firebase error: ' + (e.code || e.message));
+    console.error('Firebase get error:', e);
+  });
+
+// Real-time listener for updates while page is open
+SCENES_REF.on('value', snap => {
+  if (!cloudReady) return; // skip the initial fire, get() handles that
+  if (!snap.exists()) return;
+  applyCloudData(snap.val(), true);
+}, e => {
+  console.error('Firebase realtime error:', e);
 });
 </script>
 </body>

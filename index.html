@@ -277,6 +277,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
   <div class="hdr-brand">
     <h1>Judoboards</h1>
     <span class="proj" id="projName">LITTLE BARDITCHEVERS &nbsp;·&nbsp; TYH</span>
+    <span class="proj" style="color:var(--faint);font-size:9px;">v9</span>
   </div>
   <div class="hdr-audio" id="hdrAudio" style="display:none;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);">
     <button onclick="toggleAudioPlay()" id="audioPlayBtn" style="background:none;border:none;cursor:pointer;color:var(--accent);font-size:14px;line-height:1;padding:0;">▶</button>
@@ -671,7 +672,7 @@ function makeCard(scene){
     if(e.dataTransfer.files&&e.dataTransfer.files.length){
       toast('Uploading to Cloudinary…',60000);
       uploadFilesToCloudinary(Array.from(e.dataTransfer.files),results=>{
-        results.forEach(r=>media.push(r));ci=media.length-1;save();rSw();toast(results.length+' file(s) uploaded ✓');
+        results.forEach(r=>media.push(r));ci=media.length-1;save();rSw();toast(results.length+' file(s) uploaded ✓');saveToCloud();
       });
     }
   });
@@ -919,7 +920,7 @@ function openCloudinary(sceneId,media,ci,rSw,setCi){
       media.push({url:storedUrl,type:isVideo?'video':'image',name:info.original_filename,publicId:info.public_id,cloudinary:true});
       setCi(media.length-1);
       const s=scenes.find(s=>s.id===sceneId);if(s)s.media=media;
-      save();rSw();toast('Uploaded ✓');
+      save();rSw();toast('Uploaded ✓');saveToCloud();
     }
   });
   widget.open();

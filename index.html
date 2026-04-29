@@ -956,27 +956,9 @@ firebase.initializeApp({
   appId:             "1:762941888788:web:7912671e284bf72d33ca01"
 });
 
-const SCENES_REF = firebase.database().ref('judoboards/v3');
+const SCENES_REF = firebase.database().ref('judoboards/v4');
 let lastSyncedAt = 0;
 let cloudReady = false;
-
-function extractPayload(raw) {
-  if (!raw) return null;
-  // Current format: scenesJson string avoids Firebase array mangling
-  if (raw.scenesJson) {
-    try {
-      const s = JSON.parse(raw.scenesJson);
-      if (Array.isArray(s) && s.length) return { scenes: s, savedAt: raw.savedAt || 0 };
-    } catch(e) {}
-  }
-  // Legacy formats
-  if (raw.scenes) {
-    const s = Array.isArray(raw.scenes) ? raw.scenes : Object.values(raw.scenes).filter(v => v && v.id);
-    if (s.length) return { scenes: s, savedAt: raw.savedAt || 0 };
-  }
-  if (Array.isArray(raw) && raw.length) return { scenes: raw, savedAt: 0 };
-  return null;
-}
 
 function saveToCloud() {
   if (!cloudReady) { toast('Still connecting — try again in a moment'); return; }
@@ -984,52 +966,35 @@ function saveToCloud() {
   btn.textContent = '☁ Saving…';
   btn.disabled = true;
   const savedAt = Date.now();
-  lastSyncedAt = savedAt; // set before write so the echo is ignored in onValue
+  lastSyncedAt = savedAt; // stamp before write so onValue echo is ignored
+  localStorage.setItem('jdb_savedAt', String(savedAt));
   SCENES_REF.set({ scenesJson: JSON.stringify(scenes), savedAt })
-    .then(() => {
-      localStorage.setItem('jdb_savedAt', String(savedAt));
-      toast('Saved to cloud ✓');
-      btn.textContent = '☁ Save';
-      btn.disabled = false;
-    })
-    .catch(e => {
-      lastSyncedAt = 0;
-      toast('Save failed — check connection');
-      btn.textContent = '☁ Save';
-      btn.disabled = false;
-      console.error(e);
-    });
+    .then(() => { toast('Saved to cloud ✓'); btn.textContent = '☁ Save'; btn.disabled = false; })
+    .catch(e => { toast('Save failed — check connection'); btn.textContent = '☁ Save'; btn.disabled = false; console.error(e); });
 }
 
-let initialLoad = true;
+let firstFire = true;
 SCENES_REF.on('value', snap => {
   cloudReady = true;
-  if (initialLoad) {
-    initialLoad = false;
-    if (!snap.exists()) return;
-    const payload = extractPayload(snap.val());
-    if (!payload) return;
-    const localSavedAt = parseInt(localStorage.getItem('jdb_savedAt') || '0');
-    lastSyncedAt = payload.savedAt;
-    if (payload.savedAt > localSavedAt) {
-      scenes = payload.scenes;
-      localStorage.setItem('jdb_v4', JSON.stringify(scenes));
-      localStorage.setItem('jdb_savedAt', String(payload.savedAt));
-      render();
-      toast('Synced from cloud ✓');
-    }
-    return;
-  }
-  // Real-time update from another device
-  if (!snap.exists()) return;
-  const payload = extractPayload(snap.val());
-  if (!payload || payload.savedAt <= lastSyncedAt) return;
-  lastSyncedAt = payload.savedAt;
-  scenes = payload.scenes;
+  if (!snap.exists()) { firstFire = false; return; }
+
+  const raw = snap.val();
+  if (!raw || !raw.scenesJson) { firstFire = false; return; }
+
+  let remoteScenes;
+  try { remoteScenes = JSON.parse(raw.scenesJson); } catch(e) { firstFire = false; return; }
+  if (!Array.isArray(remoteScenes) || !remoteScenes.length) { firstFire = false; return; }
+
+  const remoteSavedAt = raw.savedAt || 0;
+  if (remoteSavedAt <= lastSyncedAt) { firstFire = false; return; } // our own echo
+
+  lastSyncedAt = remoteSavedAt;
+  scenes = remoteScenes;
   localStorage.setItem('jdb_v4', JSON.stringify(scenes));
-  localStorage.setItem('jdb_savedAt', String(payload.savedAt));
+  localStorage.setItem('jdb_savedAt', String(remoteSavedAt));
   render();
-  toast('Board updated from another device ↺');
+  if (!firstFire) toast('Board updated from another device ↺');
+  firstFire = false;
 });
 </script>
 </body>

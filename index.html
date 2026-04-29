@@ -970,6 +970,8 @@ function saveToCloud() {
   const savedAt = Date.now();
   lastSyncedAt = savedAt;
   localStorage.setItem('jdb_savedAt', String(savedAt));
+  const withImg = scenes.filter(s=>s.media&&s.media.length>0).length;
+  toast('Pushing: '+scenes.length+' scenes, '+withImg+' with images', 4000);
   SCENES_REF.set({ scenesJson: JSON.stringify(scenes), savedAt })
     .then(() => { toast('Saved to cloud ✓'); btn.textContent = '☁ Save'; btn.disabled = false; })
     .catch(e => { toast('Save failed: ' + e.code); btn.textContent = '☁ Save'; btn.disabled = false; console.error(e); });

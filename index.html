@@ -298,7 +298,6 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
     <button class="btn btn-sm" onclick="exportJSON()">Export</button>
     <button class="btn btn-sm" onclick="document.getElementById('importF').click()">Import</button>
     <button class="btn btn-primary btn-sm" onclick="addSceneGlobal()">+ Scene</button>
-    <button class="btn btn-sm btn-ghost" onclick="debugCloud()" style="font-size:10px;color:var(--faint);">🔍</button>
   </div>
 </div>
 
@@ -673,7 +672,7 @@ function makeCard(scene){
     if(e.dataTransfer.files&&e.dataTransfer.files.length){
       toast('Uploading to Cloudinary…',60000);
       uploadFilesToCloudinary(Array.from(e.dataTransfer.files),results=>{
-        results.forEach(r=>media.push(r));ci=media.length-1;save();rSw();toast(results.length+' file(s) uploaded ✓');saveToCloud();
+        results.forEach(r=>media.push(r));const sc=scenes.find(sc=>sc.id===scene.id);if(sc)sc.media=media.slice();ci=media.length-1;save();rSw();toast(results.length+' file(s) uploaded ✓');saveToCloud();
       });
     }
   });
@@ -921,7 +920,6 @@ function openCloudinary(sceneId,media,ci,rSw,setCi){
       media.push({url:storedUrl,type:isVideo?'video':'image',name:info.original_filename,publicId:info.public_id,cloudinary:true});
       setCi(media.length-1);
       const s=scenes.find(s=>s.id===sceneId);
-      alert('Upload debug:\nsceneId='+sceneId+'\nScene found: '+(s?s.title:'NOT FOUND')+'\nmedia array has: '+media.length+' item(s)\nURL: '+(media[0]?media[0].url.slice(0,60):'none'));
       if(s)s.media=media;
       save();rSw();toast('Uploaded ✓');saveToCloud();
     }
@@ -972,8 +970,6 @@ function saveToCloud() {
   const savedAt = Date.now();
   lastSyncedAt = savedAt;
   localStorage.setItem('jdb_savedAt', String(savedAt));
-  const withImg = scenes.filter(s=>s.media&&s.media.length>0).length;
-  alert('Pushing to Firebase:\n'+scenes.length+' scenes\n'+withImg+' scenes with images\n\nScenes with media:\n'+scenes.filter(s=>s.media&&s.media.length).map(s=>s.title+': '+s.media.length+' image(s)').join('\n'));
   SCENES_REF.set({ scenesJson: JSON.stringify(scenes), savedAt })
     .then(() => { toast('Saved to cloud ✓'); btn.textContent = '☁ Save'; btn.disabled = false; })
     .catch(e => { toast('Save failed: ' + e.code); btn.textContent = '☁ Save'; btn.disabled = false; console.error(e); });
@@ -995,18 +991,6 @@ function applyCloudData(raw, isRealtime) {
   localStorage.setItem('jdb_localAt', String(remoteSavedAt));
   render();
   toast(isRealtime ? 'Board updated from another device ↺' : 'Synced from cloud ✓');
-}
-
-function debugCloud() {
-  toast('Checking Firebase…', 3000);
-  SCENES_REF.get().then(snap => {
-    if (!snap.exists()) { toast('Firebase: empty'); return; }
-    const raw = snap.val();
-    if (!raw || !raw.scenesJson) { toast('Firebase: no scenesJson field'); return; }
-    let s; try { s = JSON.parse(raw.scenesJson); } catch(e) { toast('Firebase: JSON parse failed'); return; }
-    const withMedia = s.filter(sc => sc.media && sc.media.length > 0);
-    toast('Firebase: ' + s.length + ' scenes, ' + withMedia.length + ' with images. savedAt=' + new Date(raw.savedAt).toLocaleTimeString(), 6000);
-  }).catch(e => toast('Firebase error: ' + e.message));
 }
 
 // Initial load via get() — surfaces permission errors explicitly

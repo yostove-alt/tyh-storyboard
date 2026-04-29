@@ -292,6 +292,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
   </label>
   <div class="hdr-actions">
     <button class="btn btn-ghost btn-sm" onclick="togglePanel()" id="panelBtn">◀ Write</button>
+    <button class="btn btn-primary btn-sm" id="saveCloudBtn" onclick="saveToCloud()">☁ Save</button>
     <button class="btn btn-gold btn-sm" onclick="window.print()">PDF</button>
     <button class="btn btn-sm" onclick="exportJSON()">Export</button>
     <button class="btn btn-sm" onclick="document.getElementById('importF').click()">Import</button>
@@ -881,19 +882,25 @@ function exportJSON(){const blob=new Blob([JSON.stringify(scenes,null,2)],{type:
 function handleImport(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{scenes=JSON.parse(ev.target.result);save();render();toast('Imported!');}catch{toast('Invalid file');}};r.readAsText(f);e.target.value='';}
 
 render();
-</script>
 // Restore audio on page load
 (function(){
   const url=localStorage.getItem('jdb_audio_url');
   const name=localStorage.getItem('jdb_audio_name')||'Audio track';
   if(url)initAudio(url,name);
 })();
+</script>
 
 <!-- Cloudinary Upload Widget -->
 <script src="https://upload-widget.cloudinary.com/global/all.js" type="text/javascript"></script>
 <script>
 const CLD_CLOUD='doxidi5fm';
 const CLD_PRESET='judoboards';
+
+// Inject f_auto,q_auto so Cloudinary serves WebP/JPEG instead of HEIC
+function cldImageUrl(url){
+  if(!url||!url.includes('cloudinary.com'))return url;
+  return url.replace('/upload/','/upload/f_auto,q_auto/');
+}
 
 function openCloudinary(sceneId,media,ci,rSw,setCi){
   if(typeof cloudinary==='undefined'){toast('Cloudinary loading — try again in a moment');return;}
@@ -908,7 +915,8 @@ function openCloudinary(sceneId,media,ci,rSw,setCi){
     if(result.event==='success'){
       const info=result.info;
       const isVideo=info.resource_type==='video';
-      media.push({url:info.secure_url,type:isVideo?'video':'image',name:info.original_filename,publicId:info.public_id,cloudinary:true});
+      const storedUrl=isVideo?info.secure_url:cldImageUrl(info.secure_url);
+      media.push({url:storedUrl,type:isVideo?'video':'image',name:info.original_filename,publicId:info.public_id,cloudinary:true});
       setCi(media.length-1);
       const s=scenes.find(s=>s.id===sceneId);if(s)s.media=media;
       save();rSw();toast('Uploaded ✓');
@@ -927,11 +935,81 @@ async function uploadFilesToCloudinary(files,callback){
       const rt=file.type.startsWith('video')?'video':'image';
       const res=await fetch(`https://api.cloudinary.com/v1_1/${CLD_CLOUD}/${rt}/upload`,{method:'POST',body:fd});
       const data=await res.json();
-      if(data.secure_url)results.push({url:data.secure_url,type:rt,name:file.name,publicId:data.public_id,cloudinary:true});
+      if(data.secure_url)results.push({url:rt==='video'?data.secure_url:cldImageUrl(data.secure_url),type:rt,name:file.name,publicId:data.public_id,cloudinary:true});
     }catch(e){toast('Upload failed: '+file.name);}
   }
   callback(results);
 }
+</script>
+
+<!-- Firebase Realtime Database -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
+firebase.initializeApp({
+  apiKey:            "AIzaSyBtbm4MauXZ1uyFmOvY3p4LQFxNzq2ahWI",
+  authDomain:        "judoboards2.firebaseapp.com",
+  databaseURL:       "https://judoboards2-default-rtdb.firebaseio.com",
+  projectId:         "judoboards2",
+  storageBucket:     "judoboards2.firebasestorage.app",
+  messagingSenderId: "762941888788",
+  appId:             "1:762941888788:web:7912671e284bf72d33ca01"
+});
+
+const SCENES_REF = firebase.database().ref('judoboards/scenes');
+let lastSyncedJson = null;
+let cloudReady = false;
+
+function saveToCloud() {
+  if (!cloudReady) { toast('Still connecting — try again in a moment'); return; }
+  const btn = document.getElementById('saveCloudBtn');
+  btn.textContent = '☁ Saving…';
+  btn.disabled = true;
+  const payload = JSON.stringify(scenes);
+  lastSyncedJson = payload;
+  SCENES_REF.set(scenes)
+    .then(() => { toast('Saved to cloud ✓'); btn.textContent = '☁ Save'; btn.disabled = false; })
+    .catch(e => { toast('Save failed — check connection'); btn.textContent = '☁ Save'; btn.disabled = false; console.error(e); });
+}
+
+// onValue fires once immediately with current server data, then again on any remote change
+let initialLoad = true;
+SCENES_REF.on('value', snap => {
+  if (initialLoad) {
+    initialLoad = false;
+    cloudReady = true;
+    if (!snap.exists()) {
+      // Cloud is empty — push whatever we have locally up
+      lastSyncedJson = JSON.stringify(scenes);
+      SCENES_REF.set(scenes);
+      toast('Board saved to cloud ✓');
+      return;
+    }
+    const remote = snap.val();
+    if (!Array.isArray(remote) || !remote.length) return;
+    const remoteJson = JSON.stringify(remote);
+    lastSyncedJson = remoteJson;
+    if (remoteJson !== JSON.stringify(scenes)) {
+      scenes = remote;
+      localStorage.setItem('jdb_v4', JSON.stringify(scenes));
+      render();
+      toast('Synced from cloud ✓');
+    }
+    return;
+  }
+
+  // Subsequent fires = a real change from another device
+  if (!snap.exists()) return;
+  const remote = snap.val();
+  if (!Array.isArray(remote) || !remote.length) return;
+  const remoteJson = JSON.stringify(remote);
+  if (remoteJson === lastSyncedJson) return; // echo of our own write
+  lastSyncedJson = remoteJson;
+  scenes = remote;
+  localStorage.setItem('jdb_v4', JSON.stringify(scenes));
+  render();
+  toast('Board updated from another device ↺');
+});
 </script>
 </body>
 </html>

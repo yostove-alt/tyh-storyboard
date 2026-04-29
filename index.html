@@ -920,7 +920,9 @@ function openCloudinary(sceneId,media,ci,rSw,setCi){
       const storedUrl=isVideo?info.secure_url:cldImageUrl(info.secure_url);
       media.push({url:storedUrl,type:isVideo?'video':'image',name:info.original_filename,publicId:info.public_id,cloudinary:true});
       setCi(media.length-1);
-      const s=scenes.find(s=>s.id===sceneId);if(s)s.media=media;
+      const s=scenes.find(s=>s.id===sceneId);
+      alert('Upload debug:\nsceneId='+sceneId+'\nScene found: '+(s?s.title:'NOT FOUND')+'\nmedia array has: '+media.length+' item(s)\nURL: '+(media[0]?media[0].url.slice(0,60):'none'));
+      if(s)s.media=media;
       save();rSw();toast('Uploaded ✓');saveToCloud();
     }
   });

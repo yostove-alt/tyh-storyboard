@@ -681,6 +681,17 @@ function readFileAsDataUrl(file){
     reader.readAsDataURL(file);
   });
 }
+function audioShareData(audio){
+  if(!audio||!audio.dataUrl)return null;
+  return {
+    name:audio.name||'Audio track',
+    fileName:audio.fileName||audio.name||'audio',
+    type:audio.type||'audio/mpeg',
+    dataUrl:audio.dataUrl,
+    size:audio.size||0,
+    updatedAt:audio.updatedAt||Date.now()
+  };
+}
 function loadStoryboardIndex(){
   try{
     const parsed=JSON.parse(localStorage.getItem(STORYBOARD_INDEX_KEY)||'[]');
@@ -1124,7 +1135,8 @@ async function collectSharedSnapshot(){
     });
     try{
       const audio=await getStoredAudio(board.id);
-      if(audio)boards[board.id].audioData=audio;
+      const portableAudio=audioShareData(audio);
+      if(portableAudio)boards[board.id].audioData=portableAudio;
     }catch(e){}
   }
   return {version:1,updatedAt:Date.now(),storyboards,boards};
@@ -1345,8 +1357,8 @@ function renderLyricsPanel(b){
 
 async function loadLyricsAudioFile(file){
   if(!file)return;
-  const url=await saveAudioFile(file);
-  initAudio(url,file.name.replace(/\.[^.]+$/,''));
+  const source=await saveAudioFile(file);
+  initAudio(source.url,file.name.replace(/\.[^.]+$/,''),{objectUrl:source.objectUrl});
   renderPanel();
   toast(file.size>MAX_SAVED_AUDIO_BYTES?'Song loaded for this session':'Song saved');
 }
@@ -2659,8 +2671,11 @@ document.getElementById('lightbox').onclick=e=>{if(e.target===e.currentTarget)cl
 
 // ── AUDIO ──
 let globalAudio=null;
-function initAudio(url,name){
+let globalAudioObjectUrl=null;
+function initAudio(url,name,{objectUrl=false}={}){
   if(globalAudio){globalAudio.pause();globalAudio=null;}
+  if(globalAudioObjectUrl){URL.revokeObjectURL(globalAudioObjectUrl);globalAudioObjectUrl=null;}
+  if(objectUrl)globalAudioObjectUrl=url;
   globalAudio=new Audio(url);
   globalAudio.preload='auto';
   globalAudio.addEventListener('timeupdate',()=>{
@@ -2678,10 +2693,19 @@ function initAudio(url,name){
   globalAudio.addEventListener('ended',()=>{
     currentPlaybackSceneId=null;currentPlaybackStart=null;updatePlaybackControls();document.getElementById('audioPlayBtn').textContent='▶';
   });
-  globalAudio.addEventListener('error',()=>toast('Audio could not load. Try re-uploading the track.',3600));
+  globalAudio.addEventListener('error',()=>{
+    const code=globalAudio?.error?.code;
+    toast('Audio could not load'+(code?' (code '+code+')':'')+'. Try re-uploading the track.',4200);
+  });
   document.getElementById('hdrAudio').style.display='flex';
   document.getElementById('audioTitle').textContent=name;
   globalAudio.load();
+}
+function storedAudioSource(audio){
+  if(!audio)return null;
+  if(audio.blob instanceof Blob)return {url:URL.createObjectURL(audio.blob),objectUrl:true};
+  if(audio.dataUrl)return {url:audio.dataUrl,objectUrl:false};
+  return null;
 }
 function waitForAudioReady(){
   return new Promise((resolve,reject)=>{
@@ -2734,26 +2758,28 @@ async function saveAudioFile(file){
   songInfo.fileName=file.name;
   saveSongInfo();
   window.jdbSongFile=file;
+  const source={url:URL.createObjectURL(file),objectUrl:true};
   if(file.size>MAX_SAVED_AUDIO_BYTES){
     await removeStoredAudio();
     toast('Audio loaded, but file is too large to save/shared sync. Use under 15 MB.',4200);
-    return URL.createObjectURL(file);
+    return source;
   }
   const dataUrl=await readFileAsDataUrl(file);
-  await setStoredAudio(activeStoryboardId,{name:cleanName,fileName:file.name,type:file.type||'audio/mpeg',dataUrl,size:file.size,updatedAt:Date.now()});
-  return dataUrl;
+  await setStoredAudio(activeStoryboardId,{name:cleanName,fileName:file.name,type:file.type||'audio/mpeg',blob:file,dataUrl,size:file.size,updatedAt:Date.now()});
+  return source;
 }
 async function restoreStoredAudio(){
   try{
     const audio=await getStoredAudio();
-    if(audio&&audio.dataUrl)initAudio(audio.dataUrl,audio.name||audio.fileName||boardGet('jdb_audio_name')||'Audio track');
+    const source=storedAudioSource(audio);
+    if(source)initAudio(source.url,audio.name||audio.fileName||boardGet('jdb_audio_name')||'Audio track',{objectUrl:source.objectUrl});
   }catch(e){}
 }
 async function loadAudioTrack(input){
   const file=input.files[0];if(!file)return;
   boardRemove('jdb_audio_url');
-  const url=await saveAudioFile(file);
-  initAudio(url,file.name.replace(/\.[^.]+$/,''));
+  const source=await saveAudioFile(file);
+  initAudio(source.url,file.name.replace(/\.[^.]+$/,''),{objectUrl:source.objectUrl});
   toast(file.size>MAX_SAVED_AUDIO_BYTES?'Audio loaded for this session':'Audio saved');
   input.value='';
 }
@@ -2797,7 +2823,7 @@ async function toggleAudioPlay(){
   updatePlaybackControls();
 }
 function scrubAudio(val){if(globalAudio&&globalAudio.duration){globalAudio.currentTime=(val/100)*globalAudio.duration;updatePlaybackControls();}}
-async function clearAudio(){if(globalAudio){globalAudio.pause();globalAudio=null;}sectionEnd=null;currentPlaybackSceneId=null;currentPlaybackStart=null;updatePlaybackControls();boardRemove('jdb_audio_url');boardRemove('jdb_audio_name');delete songInfo.fileName;saveSongInfo();await removeStoredAudio();document.getElementById('hdrAudio').style.display='none';}
+async function clearAudio(){if(globalAudio){globalAudio.pause();globalAudio=null;}if(globalAudioObjectUrl){URL.revokeObjectURL(globalAudioObjectUrl);globalAudioObjectUrl=null;}sectionEnd=null;currentPlaybackSceneId=null;currentPlaybackStart=null;updatePlaybackControls();boardRemove('jdb_audio_url');boardRemove('jdb_audio_name');delete songInfo.fileName;saveSongInfo();await removeStoredAudio();document.getElementById('hdrAudio').style.display='none';}
 function updatePlaybackControls(){
   document.querySelectorAll('.section-clock').forEach(clock=>{
     const id=Number(clock.dataset.sceneId);

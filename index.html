@@ -692,6 +692,8 @@ function loadStoryboardIndex(){
   return [starter];
 }
 function loadActiveStoryboardId(){
+  const requested=boardIdFromHash();
+  if(requested&&storyboards.some(board=>board.id===requested))return requested;
   const saved=localStorage.getItem(ACTIVE_STORYBOARD_KEY);
   return storyboards.some(board=>board.id===saved)?saved:storyboards[0].id;
 }
@@ -711,6 +713,19 @@ function slugBoardName(name){
   return id;
 }
 function starterBoardName(){return currentStoryboard()?.name||'Little Barditchevers';}
+function boardIdFromHash(){
+  const params=new URLSearchParams(String(location.hash||'').replace(/^#/,''));
+  return params.get('board')||'';
+}
+function boardShareUrl(id=activeStoryboardId){
+  const url=new URL(location.href);
+  url.hash='board='+encodeURIComponent(id);
+  return url.href;
+}
+function updateBoardHash(id=activeStoryboardId){
+  const next='#board='+encodeURIComponent(id);
+  if(location.hash!==next)history.replaceState(null,'',next);
+}
 
 const INIT=[
   {id:1,act:'Act 1 — Courtroom',num:'1',title:'Intro',time:'0:00 – 0:05',location:'Outside courtroom',status:'Not shot',lyrics:'Instrumental only',shots:['Slow push into courthouse doors — boys in suits outside','Low angle: polished shoes, Kedushas Levi sefer under arm','One boy straightens tie — they push open the doors'],note:'Cold open. Establish the world before any lyrics hit.',props:'Suits, Kedushas Levi sefer',camera:['Cam A — Moti'],media:[]},
@@ -974,6 +989,7 @@ function showStoryboardMenu(){
 }
 function hideStoryboardMenu(){
   localStorage.setItem(LAST_SCREEN_KEY,'board');
+  updateBoardHash();
   document.getElementById('storyboardMenu').classList.remove('show');
 }
 function renderStoryboardMenu(){
@@ -996,7 +1012,8 @@ function renderStoryboardMenu(){
     const actions=document.createElement('div');actions.className='storyboard-card-actions';
     const rename=document.createElement('button');rename.className='btn btn-sm';rename.textContent='Rename';rename.onclick=e=>{e.stopPropagation();renameStoryboard(board.id);};
     const dup=document.createElement('button');dup.className='btn btn-sm';dup.textContent='Duplicate';dup.onclick=e=>{e.stopPropagation();duplicateStoryboard(board.id);};
-    actions.appendChild(rename);actions.appendChild(dup);
+    const share=document.createElement('button');share.className='btn btn-sm';share.textContent='Share';share.onclick=e=>{e.stopPropagation();copyBoardLink(board.id);};
+    actions.appendChild(share);actions.appendChild(rename);actions.appendChild(dup);
     if(storyboards.length>1){
       const del=document.createElement('button');del.className='btn btn-sm';del.textContent='Delete';del.onclick=e=>{e.stopPropagation();deleteStoryboard(board.id);};
       actions.appendChild(del);
@@ -1030,9 +1047,19 @@ function openStoryboard(id){
   if(id===activeStoryboardId){hideStoryboardMenu();return;}
   activeStoryboardId=id;
   persistStoryboardIndex();
+  updateBoardHash(id);
   reloadBoardState();
   hideStoryboardMenu();
   toast('Opened '+(currentStoryboard()?.name||'storyboard'));
+}
+async function copyBoardLink(id){
+  const link=boardShareUrl(id);
+  try{
+    await navigator.clipboard.writeText(link);
+    toast('Storyboard link copied');
+  }catch(e){
+    prompt('Copy storyboard link:',link);
+  }
 }
 function createStoryboard(){
   const name=(prompt('Storyboard name:','New storyboard')||'').trim();
@@ -1040,6 +1067,7 @@ function createStoryboard(){
   const board={id:slugBoardName(name),name,createdAt:Date.now(),updatedAt:Date.now()};
   storyboards.unshift(board);
   activeStoryboardId=board.id;
+  updateBoardHash(board.id);
   seedNewStoryboard(board.id,name);
   persistStoryboardIndex();
   reloadBoardState();
@@ -1068,6 +1096,7 @@ function duplicateStoryboard(id){
   copyBoardStorage(id,board.id);
   storyboards.unshift(board);
   activeStoryboardId=board.id;
+  updateBoardHash(board.id);
   persistStoryboardIndex();
   reloadBoardState();showStoryboardMenu();toast('Storyboard duplicated');
 }
@@ -1078,6 +1107,7 @@ function deleteStoryboard(id){
   storyboards=storyboards.filter(item=>item.id!==id);
   LEGACY_BOARD_KEYS.forEach(key=>localStorage.removeItem(boardKey(key,id)));
   if(activeStoryboardId===id)activeStoryboardId=storyboards[0].id;
+  updateBoardHash(activeStoryboardId);
   persistStoryboardIndex();
   reloadBoardState();showStoryboardMenu();toast('Storyboard deleted');
 }
@@ -1134,6 +1164,14 @@ async function loadSharedBoards({silent=false,force=false}={}){
     if(!silent)toast('Could not load shared boards');
     return false;
   }
+}
+function openHashBoardIfPresent(){
+  const requested=boardIdFromHash();
+  if(!requested||requested===activeStoryboardId||!storyboards.some(board=>board.id===requested))return false;
+  activeStoryboardId=requested;
+  persistStoryboardIndex();
+  reloadBoardState();
+  return true;
 }
 function getSupabaseUrl(){return (localStorage.getItem(SUPABASE_URL_KEY)||DEFAULT_SUPABASE_URL).replace(/\/+$/,'');}
 function getSupabaseAnonKey(){return localStorage.getItem(SUPABASE_ANON_KEY_KEY)||DEFAULT_SUPABASE_ANON_KEY;}
@@ -2754,9 +2792,11 @@ setPanel(panelOpen);
 boardRemove('jdb_audio_url');
 updateProjectName();
 updateCloudStatus();
+if(boardIdFromHash())localStorage.setItem(LAST_SCREEN_KEY,'board');
 if(localStorage.getItem(LAST_SCREEN_KEY)!=='board')showStoryboardMenu();
 loadSharedBoards({silent:true});
 restoreStoredAudio();
+window.addEventListener('hashchange',()=>{if(openHashBoardIfPresent())hideStoryboardMenu();});
 </script>
 
 <script>

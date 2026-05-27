@@ -611,6 +611,7 @@ const FIELD_DEFAULTS=[
 ];
 const STORYBOARD_INDEX_KEY='jdb_storyboards_index';
 const ACTIVE_STORYBOARD_KEY='jdb_active_storyboard';
+const LAST_SCREEN_KEY='jdb_last_screen';
 const LEGACY_BOARD_KEYS=['jdb_v4','jdb_field_settings','jdb_acts','jdb_locations','jdb_statuses','jdb_cameras','jdb_viewer_ratio','jdb_card_height','jdb_song_info','jdb_audio_name'];
 const DEFAULT_SUPABASE_URL='';
 const DEFAULT_SUPABASE_ANON_KEY='';
@@ -967,10 +968,12 @@ function storyboardStats(id){
   return {scenes:list.length,acts:actsCount,timed};
 }
 function showStoryboardMenu(){
+  localStorage.setItem(LAST_SCREEN_KEY,'menu');
   renderStoryboardMenu();
   document.getElementById('storyboardMenu').classList.add('show');
 }
 function hideStoryboardMenu(){
+  localStorage.setItem(LAST_SCREEN_KEY,'board');
   document.getElementById('storyboardMenu').classList.remove('show');
 }
 function renderStoryboardMenu(){
@@ -2751,7 +2754,7 @@ setPanel(panelOpen);
 boardRemove('jdb_audio_url');
 updateProjectName();
 updateCloudStatus();
-showStoryboardMenu();
+if(localStorage.getItem(LAST_SCREEN_KEY)!=='board')showStoryboardMenu();
 loadSharedBoards({silent:true});
 restoreStoredAudio();
 </script>

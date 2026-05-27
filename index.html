@@ -621,6 +621,9 @@ const SUPABASE_ANON_KEY_KEY='jdb_supabase_anon_key';
 const SUPABASE_SESSION_KEY='jdb_supabase_session';
 const SUPABASE_TABLE='storyboard_snapshots';
 const SUPABASE_ROW_ID='default';
+const AUDIO_DB='jdb_audio_store';
+const AUDIO_STORE='tracks';
+const MAX_SAVED_AUDIO_BYTES=15*1024*1024;
 let storyboards=loadStoryboardIndex();
 let activeStoryboardId=loadActiveStoryboardId();
 
@@ -632,6 +635,51 @@ function boardGet(key){
 }
 function boardSet(key,value){localStorage.setItem(boardKey(key),value);}
 function boardRemove(key){localStorage.removeItem(boardKey(key));}
+function audioStoreKey(id=activeStoryboardId){return 'audio_'+id;}
+function openAudioDb(){
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open(AUDIO_DB,1);
+    req.onupgradeneeded=()=>req.result.createObjectStore(AUDIO_STORE);
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+async function setStoredAudio(id,data){
+  const db=await openAudioDb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(AUDIO_STORE,'readwrite');
+    tx.objectStore(AUDIO_STORE).put(data,audioStoreKey(id));
+    tx.oncomplete=()=>{db.close();resolve();};
+    tx.onerror=()=>{db.close();reject(tx.error);};
+  });
+}
+async function getStoredAudio(id=activeStoryboardId){
+  const db=await openAudioDb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(AUDIO_STORE,'readonly');
+    const req=tx.objectStore(AUDIO_STORE).get(audioStoreKey(id));
+    req.onsuccess=()=>resolve(req.result||null);
+    req.onerror=()=>reject(req.error);
+    tx.oncomplete=()=>db.close();
+  });
+}
+async function removeStoredAudio(id=activeStoryboardId){
+  const db=await openAudioDb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(AUDIO_STORE,'readwrite');
+    tx.objectStore(AUDIO_STORE).delete(audioStoreKey(id));
+    tx.oncomplete=()=>{db.close();resolve();};
+    tx.onerror=()=>{db.close();reject(tx.error);};
+  });
+}
+function readFileAsDataUrl(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(reader.result);
+    reader.onerror=()=>reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
 function loadStoryboardIndex(){
   try{
     const parsed=JSON.parse(localStorage.getItem(STORYBOARD_INDEX_KEY)||'[]');
@@ -973,6 +1021,7 @@ function reloadBoardState(){
   applyViewerRatio();applyCardHeight();updateProjectName();
   document.getElementById('hdrAudio').style.display='none';
   render();renderPanel();
+  restoreStoredAudio();
 }
 function openStoryboard(id){
   if(id===activeStoryboardId){hideStoryboardMenu();return;}
@@ -1031,28 +1080,35 @@ function deleteStoryboard(id){
 }
 
 // ── SHARED DATABASE SAVE ──
-function collectSharedSnapshot(){
+async function collectSharedSnapshot(){
   save();
   const boards={};
-  storyboards.forEach(board=>{
+  for(const board of storyboards){
     boards[board.id]={};
     LEGACY_BOARD_KEYS.forEach(key=>{
       const value=boardStoredValue(board.id,key);
       if(value!==null)boards[board.id][key]=value;
     });
-  });
+    try{
+      const audio=await getStoredAudio(board.id);
+      if(audio)boards[board.id].audioData=audio;
+    }catch(e){}
+  }
   return {version:1,updatedAt:Date.now(),storyboards,boards};
 }
-function applySharedSnapshot(snapshot,{silent=false}={}){
+async function applySharedSnapshot(snapshot,{silent=false}={}){
   if(!snapshot||!Array.isArray(snapshot.storyboards)||!snapshot.storyboards.length||!snapshot.boards)return false;
   storyboards=snapshot.storyboards.map(board=>({...board}));
   activeStoryboardId=storyboards.some(board=>board.id===activeStoryboardId)?activeStoryboardId:storyboards[0].id;
-  storyboards.forEach(board=>{
+  for(const board of storyboards){
     const data=snapshot.boards[board.id]||{};
     LEGACY_BOARD_KEYS.forEach(key=>{
       if(data[key]!==undefined&&data[key]!==null)localStorage.setItem(boardKey(key,board.id),String(data[key]));
     });
-  });
+    if(data.audioData){
+      try{await setStoredAudio(board.id,data.audioData);}catch(e){}
+    }
+  }
   localStorage.setItem(CLOUD_LOADED_KEY,String(snapshot.updatedAt||Date.now()));
   persistStoryboardIndex();
   reloadBoardState();
@@ -1070,7 +1126,7 @@ async function loadSharedBoards({silent=false,force=false}={}){
     const snapshot=await response.json();
     const loaded=parseInt(localStorage.getItem(CLOUD_LOADED_KEY)||'0',10);
     if(!force&&loaded&&snapshot.updatedAt&&snapshot.updatedAt<=loaded)return false;
-    return applySharedSnapshot(snapshot,{silent});
+    return await applySharedSnapshot(snapshot,{silent});
   }catch(e){
     if(!silent)toast('Could not load shared boards');
     return false;
@@ -1142,7 +1198,7 @@ async function loadSharedBoardsFromSupabase({silent=false,force=false}={}){
     const snapshot=rows[0].data;
     const loaded=parseInt(localStorage.getItem(CLOUD_LOADED_KEY)||'0',10);
     if(!force&&loaded&&snapshot.updatedAt&&snapshot.updatedAt<=loaded)return false;
-    return applySharedSnapshot(snapshot,{silent});
+    return await applySharedSnapshot(snapshot,{silent});
   }catch(e){
     if(!silent)toast('Could not load shared boards');
     return false;
@@ -1151,7 +1207,7 @@ async function loadSharedBoardsFromSupabase({silent=false,force=false}={}){
 async function saveSharedBoardsToCloud(button){
   if(!cloudConfigured()){configureCloud();if(!cloudConfigured())return;}
   if(!getCloudSession()){await signInCloud();if(!getCloudSession())return;}
-  const snapshot=collectSharedSnapshot();
+  const snapshot=await collectSharedSnapshot();
   button.disabled=true;button.textContent='Saving shared...';
   try{
     const response=await fetch(getSupabaseUrl()+'/rest/v1/'+SUPABASE_TABLE,{
@@ -1246,16 +1302,12 @@ function renderLyricsPanel(b){
   w.appendChild(note);b.appendChild(w);
 }
 
-function loadLyricsAudioFile(file){
+async function loadLyricsAudioFile(file){
   if(!file)return;
-  songInfo.fileName=file.name;
-  saveSongInfo();
-  const url=URL.createObjectURL(file);
-  boardSet('jdb_audio_name',file.name.replace(/\.[^.]+$/,''));
+  const url=await saveAudioFile(file);
   initAudio(url,file.name.replace(/\.[^.]+$/,''));
-  window.jdbSongFile=file;
   renderPanel();
-  toast('Song loaded');
+  toast(file.size>MAX_SAVED_AUDIO_BYTES?'Song loaded for this session':'Song saved');
 }
 async function transcribeSongFile(button,lyricsEl){
   const file=window.jdbSongFile;
@@ -2587,14 +2639,33 @@ function initAudio(url,name){
   document.getElementById('hdrAudio').style.display='flex';
   document.getElementById('audioTitle').textContent=name;
 }
+async function saveAudioFile(file){
+  const cleanName=file.name.replace(/\.[^.]+$/,'');
+  boardSet('jdb_audio_name',cleanName);
+  songInfo.fileName=file.name;
+  saveSongInfo();
+  window.jdbSongFile=file;
+  if(file.size>MAX_SAVED_AUDIO_BYTES){
+    await removeStoredAudio();
+    toast('Audio loaded, but file is too large to save/shared sync. Use under 15 MB.',4200);
+    return URL.createObjectURL(file);
+  }
+  const dataUrl=await readFileAsDataUrl(file);
+  await setStoredAudio(activeStoryboardId,{name:cleanName,fileName:file.name,type:file.type||'audio/mpeg',dataUrl,size:file.size,updatedAt:Date.now()});
+  return dataUrl;
+}
+async function restoreStoredAudio(){
+  try{
+    const audio=await getStoredAudio();
+    if(audio&&audio.dataUrl)initAudio(audio.dataUrl,audio.name||audio.fileName||boardGet('jdb_audio_name')||'Audio track');
+  }catch(e){}
+}
 async function loadAudioTrack(input){
   const file=input.files[0];if(!file)return;
-  const url=URL.createObjectURL(file);
   boardRemove('jdb_audio_url');
-  boardSet('jdb_audio_name',file.name.replace(/\.[^.]+$/,''));
-  songInfo.fileName=file.name;saveSongInfo();window.jdbSongFile=file;
+  const url=await saveAudioFile(file);
   initAudio(url,file.name.replace(/\.[^.]+$/,''));
-  toast('Audio loaded for this session');
+  toast(file.size>MAX_SAVED_AUDIO_BYTES?'Audio loaded for this session':'Audio saved');
   input.value='';
 }
 let sectionEnd=null;
@@ -2645,7 +2716,7 @@ function toggleAudioPlay(){
   updatePlaybackControls();
 }
 function scrubAudio(val){if(globalAudio&&globalAudio.duration){globalAudio.currentTime=(val/100)*globalAudio.duration;updatePlaybackControls();}}
-function clearAudio(){if(globalAudio){globalAudio.pause();globalAudio=null;}sectionEnd=null;currentPlaybackSceneId=null;currentPlaybackStart=null;updatePlaybackControls();boardRemove('jdb_audio_url');boardRemove('jdb_audio_name');document.getElementById('hdrAudio').style.display='none';}
+async function clearAudio(){if(globalAudio){globalAudio.pause();globalAudio=null;}sectionEnd=null;currentPlaybackSceneId=null;currentPlaybackStart=null;updatePlaybackControls();boardRemove('jdb_audio_url');boardRemove('jdb_audio_name');delete songInfo.fileName;saveSongInfo();await removeStoredAudio();document.getElementById('hdrAudio').style.display='none';}
 function updatePlaybackControls(){
   document.querySelectorAll('.section-clock').forEach(clock=>{
     const id=Number(clock.dataset.sceneId);
@@ -2682,6 +2753,7 @@ updateProjectName();
 updateCloudStatus();
 showStoryboardMenu();
 loadSharedBoards({silent:true});
+restoreStoredAudio();
 </script>
 
 <script>

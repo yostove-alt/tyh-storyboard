@@ -851,7 +851,11 @@ function restoreMissingStarterLyrics(list){
   if(changed)setTimeout(save,0);
   return restored;
 }
+function renumberScenes(){
+  scenes.forEach((scene,index)=>{scene.num=String(index+1);});
+}
 function save(){
+  renumberScenes();
   boardSet('jdb_localAt',String(Date.now()));
   try{
     boardSet('jdb_v4',JSON.stringify(scenes));

@@ -461,7 +461,7 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
   </label>
   <div class="hdr-actions">
     <button class="btn btn-sm main-menu-btn" onclick="showStoryboardMenu()">Main menu</button>
-    <button class="btn btn-primary btn-sm" id="saveCloudBtn" onclick="saveToCloud()">Save local</button>
+    <button class="btn btn-primary btn-sm" id="saveCloudBtn" onclick="saveToCloud()">Save shared</button>
     <button class="btn btn-gold btn-sm" onclick="window.print()">PDF</button>
     <button class="btn btn-sm" onclick="exportJSON()">Export</button>
     <button class="btn btn-sm" onclick="document.getElementById('importF').click()">Import</button>
@@ -607,6 +607,11 @@ const FIELD_DEFAULTS=[
 const STORYBOARD_INDEX_KEY='jdb_storyboards_index';
 const ACTIVE_STORYBOARD_KEY='jdb_active_storyboard';
 const LEGACY_BOARD_KEYS=['jdb_v4','jdb_field_settings','jdb_acts','jdb_locations','jdb_statuses','jdb_cameras','jdb_viewer_ratio','jdb_card_height','jdb_song_info','jdb_audio_name'];
+const CLOUD_OWNER='yostove-alt';
+const CLOUD_REPO='tyh-storyboard';
+const CLOUD_BRANCH='main';
+const CLOUD_PATH='data/boards.json';
+const CLOUD_LOADED_KEY='jdb_cloud_loaded_at';
 let storyboards=loadStoryboardIndex();
 let activeStoryboardId=loadActiveStoryboardId();
 
@@ -1014,6 +1019,101 @@ function deleteStoryboard(id){
   if(activeStoryboardId===id)activeStoryboardId=storyboards[0].id;
   persistStoryboardIndex();
   reloadBoardState();showStoryboardMenu();toast('Storyboard deleted');
+}
+
+// ── SHARED GITHUB SAVE ──
+function collectSharedSnapshot(){
+  save();
+  const boards={};
+  storyboards.forEach(board=>{
+    boards[board.id]={};
+    LEGACY_BOARD_KEYS.forEach(key=>{
+      const value=boardStoredValue(board.id,key);
+      if(value!==null)boards[board.id][key]=value;
+    });
+  });
+  return {version:1,updatedAt:Date.now(),storyboards,boards};
+}
+function applySharedSnapshot(snapshot,{silent=false}={}){
+  if(!snapshot||!Array.isArray(snapshot.storyboards)||!snapshot.storyboards.length||!snapshot.boards)return false;
+  storyboards=snapshot.storyboards.map(board=>({...board}));
+  activeStoryboardId=storyboards.some(board=>board.id===activeStoryboardId)?activeStoryboardId:storyboards[0].id;
+  storyboards.forEach(board=>{
+    const data=snapshot.boards[board.id]||{};
+    LEGACY_BOARD_KEYS.forEach(key=>{
+      if(data[key]!==undefined&&data[key]!==null)localStorage.setItem(boardKey(key,board.id),String(data[key]));
+    });
+  });
+  localStorage.setItem(CLOUD_LOADED_KEY,String(snapshot.updatedAt||Date.now()));
+  persistStoryboardIndex();
+  reloadBoardState();
+  if(!silent)toast('Shared boards loaded');
+  return true;
+}
+async function loadSharedBoards({silent=false,force=false}={}){
+  try{
+    const response=await fetch(CLOUD_PATH+'?v='+Date.now(),{cache:'no-store'});
+    if(!response.ok)return false;
+    const snapshot=await response.json();
+    const loaded=parseInt(localStorage.getItem(CLOUD_LOADED_KEY)||'0',10);
+    if(!force&&loaded&&snapshot.updatedAt&&snapshot.updatedAt<=loaded)return false;
+    return applySharedSnapshot(snapshot,{silent});
+  }catch(e){
+    if(!silent)toast('Could not load shared boards');
+    return false;
+  }
+}
+function getGitHubToken(){
+  let token=sessionStorage.getItem('jdb_github_token')||'';
+  if(token)return token;
+  token=prompt('Paste a GitHub fine-grained token with Contents read/write access for yostove-alt/tyh-storyboard. It will stay in this browser tab only.')||'';
+  token=token.trim();
+  if(token)sessionStorage.setItem('jdb_github_token',token);
+  return token;
+}
+function encodeBase64(value){
+  return btoa(unescape(encodeURIComponent(value)));
+}
+async function saveSharedBoardsToGitHub(button){
+  const token=getGitHubToken();
+  if(!token){toast('GitHub token needed to save shared boards');return;}
+  const snapshot=collectSharedSnapshot();
+  const content=JSON.stringify(snapshot,null,2);
+  const api='https://api.github.com/repos/'+CLOUD_OWNER+'/'+CLOUD_REPO+'/contents/'+CLOUD_PATH;
+  button.disabled=true;button.textContent='Saving shared...';
+  try{
+    let sha=null;
+    const current=await fetch(api+'?ref='+CLOUD_BRANCH,{headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json'}});
+    if(current.ok){
+      const data=await current.json();
+      sha=data.sha;
+    }else if(current.status!==404){
+      throw new Error('GitHub read failed '+current.status);
+    }
+    const response=await fetch(api,{
+      method:'PUT',
+      headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json','Content-Type':'application/json'},
+      body:JSON.stringify({
+        message:'Update shared storyboard data',
+        branch:CLOUD_BRANCH,
+        content:encodeBase64(content),
+        ...(sha?{sha}:{})
+      })
+    });
+    if(!response.ok){
+      let detail='';
+      try{const err=await response.json();detail=err.message||'';}catch(e){}
+      throw new Error(detail||('GitHub save failed '+response.status));
+    }
+    localStorage.setItem(CLOUD_LOADED_KEY,String(snapshot.updatedAt));
+    toast('Saved shared boards to GitHub');
+    button.textContent='Shared saved';
+  }catch(e){
+    toast(e.message||'Could not save shared boards',4200);
+    button.textContent='Save failed';
+  }finally{
+    setTimeout(()=>{button.disabled=false;button.textContent='Save shared';},1400);
+  }
 }
 
 // ── PANEL ──
@@ -2517,15 +2617,13 @@ setPanel(panelOpen);
 boardRemove('jdb_audio_url');
 updateProjectName();
 showStoryboardMenu();
+loadSharedBoards({silent:true});
 </script>
 
 <script>
-function saveToCloud() {
+async function saveToCloud() {
   const btn = document.getElementById('saveCloudBtn');
-  save();
-  btn.textContent = 'Saved';
-  toast('Saved locally');
-  setTimeout(() => { btn.textContent = 'Save local'; }, 1200);
+  await saveSharedBoardsToGitHub(btn);
 }
 
 function openLocalMediaPicker(sceneId,media,ci,rSw,setCi){

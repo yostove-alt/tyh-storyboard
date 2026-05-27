@@ -2662,6 +2662,7 @@ let globalAudio=null;
 function initAudio(url,name){
   if(globalAudio){globalAudio.pause();globalAudio=null;}
   globalAudio=new Audio(url);
+  globalAudio.preload='auto';
   globalAudio.addEventListener('timeupdate',()=>{
     const scrub=document.getElementById('audioScrub');
     const timeEl=document.getElementById('audioTime');
@@ -2677,8 +2678,48 @@ function initAudio(url,name){
   globalAudio.addEventListener('ended',()=>{
     currentPlaybackSceneId=null;currentPlaybackStart=null;updatePlaybackControls();document.getElementById('audioPlayBtn').textContent='▶';
   });
+  globalAudio.addEventListener('error',()=>toast('Audio could not load. Try re-uploading the track.',3600));
   document.getElementById('hdrAudio').style.display='flex';
   document.getElementById('audioTitle').textContent=name;
+  globalAudio.load();
+}
+function waitForAudioReady(){
+  return new Promise((resolve,reject)=>{
+    if(!globalAudio){reject(new Error('No audio track loaded'));return;}
+    if(globalAudio.readyState>=1){resolve();return;}
+    const done=()=>{cleanup();resolve();};
+    const fail=()=>{cleanup();reject(new Error('Audio could not load'));};
+    const cleanup=()=>{
+      globalAudio.removeEventListener('loadedmetadata',done);
+      globalAudio.removeEventListener('canplay',done);
+      globalAudio.removeEventListener('error',fail);
+    };
+    globalAudio.addEventListener('loadedmetadata',done,{once:true});
+    globalAudio.addEventListener('canplay',done,{once:true});
+    globalAudio.addEventListener('error',fail,{once:true});
+    globalAudio.load();
+  });
+}
+async function safePlayAudio({start=null,end=null,sceneId=null,restart=false}={}){
+  if(!globalAudio){toast('Upload an audio track first');return false;}
+  try{
+    await waitForAudioReady();
+    if(end!==null)sectionEnd=end;
+    if(sceneId!==null)currentPlaybackSceneId=sceneId;
+    if(start!==null){
+      currentPlaybackStart=start;
+      if(restart)globalAudio.currentTime=start;
+    }
+    await globalAudio.play();
+    document.getElementById('audioPlayBtn').textContent='⏸';
+    updatePlaybackControls();
+    return true;
+  }catch(e){
+    document.getElementById('audioPlayBtn').textContent='▶';
+    updatePlaybackControls();
+    toast('Audio could not play. Try re-uploading the track.',3600);
+    return false;
+  }
 }
 async function saveAudioFile(file){
   const cleanName=file.name.replace(/\.[^.]+$/,'');
@@ -2710,7 +2751,7 @@ async function loadAudioTrack(input){
   input.value='';
 }
 let sectionEnd=null;
-function toggleSectionPlayback(sceneId,start,end){
+async function toggleSectionPlayback(sceneId,start,end){
   if(!globalAudio)return;
   if(!globalAudio.paused&&currentPlaybackSceneId===sceneId&&currentPlaybackStart===start&&sectionEnd===end){
     globalAudio.pause();
@@ -2721,38 +2762,30 @@ function toggleSectionPlayback(sceneId,start,end){
   }
   const sameSegment=currentPlaybackSceneId===sceneId&&currentPlaybackStart===start&&sectionEnd===end&&globalAudio.paused;
   if(sameSegment){
-    globalAudio.play();
-    document.getElementById('audioPlayBtn').textContent='⏸';
-    updatePlaybackControls();
-    toast('Resumed');
+    const played=await safePlayAudio({start,end,sceneId,restart:false});
+    if(played)toast('Resumed');
     return;
   }
   playSection(start,end,sceneId,true);
   toast('Playing: '+fmtTime(start)+(end?(' – '+fmtTime(end)):''));
 }
-function playSection(start,end,sceneId,restart=true){
+async function playSection(start,end,sceneId,restart=true){
   if(!globalAudio)return;
-  sectionEnd=end;
-  currentPlaybackSceneId=sceneId;
-  currentPlaybackStart=start;
-  if(restart)globalAudio.currentTime=start;
-  globalAudio.play();
-  document.getElementById('audioPlayBtn').textContent='⏸';
-  updatePlaybackControls();
+  await safePlayAudio({start,end,sceneId,restart});
 }
 function stopSectionPlayback(sceneId,start){
   if(!globalAudio)return;
   globalAudio.pause();
-  globalAudio.currentTime=start;
+  try{globalAudio.currentTime=start;}catch(e){}
   sectionEnd=null;currentPlaybackSceneId=null;currentPlaybackStart=null;
   document.getElementById('audioPlayBtn').textContent='▶';
   updatePlaybackControls();
   toast('Stopped');
 }
-function toggleAudioPlay(){
+async function toggleAudioPlay(){
   if(!globalAudio)return;
   const btn=document.getElementById('audioPlayBtn');
-  if(globalAudio.paused){globalAudio.play();btn.textContent='⏸';}
+  if(globalAudio.paused){await safePlayAudio();}
   else{globalAudio.pause();btn.textContent='▶';}
   updatePlaybackControls();
 }

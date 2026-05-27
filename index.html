@@ -2703,12 +2703,19 @@ function waitForAudioReady(){
 async function safePlayAudio({start=null,end=null,sceneId=null,restart=false}={}){
   if(!globalAudio){toast('Upload an audio track first');return false;}
   try{
-    await waitForAudioReady();
     if(end!==null)sectionEnd=end;
     if(sceneId!==null)currentPlaybackSceneId=sceneId;
     if(start!==null){
       currentPlaybackStart=start;
-      if(restart)globalAudio.currentTime=start;
+      if(restart){
+        if(globalAudio.readyState>=1){
+          globalAudio.currentTime=start;
+        }else{
+          const seekWhenReady=()=>{try{globalAudio.currentTime=start;}catch(e){}};
+          globalAudio.addEventListener('loadedmetadata',seekWhenReady,{once:true});
+          globalAudio.addEventListener('canplay',seekWhenReady,{once:true});
+        }
+      }
     }
     await globalAudio.play();
     document.getElementById('audioPlayBtn').textContent='⏸';

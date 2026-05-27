@@ -852,6 +852,13 @@ function restoreMissingStarterLyrics(list){
   return restored;
 }
 function renumberScenes(){
+  const actOrder=uniqueList([...acts,...scenes.map(scene=>scene.act)]);
+  const ordered=[];
+  actOrder.forEach(act=>{
+    scenes.filter(scene=>scene.act===act).forEach(scene=>ordered.push(scene));
+  });
+  scenes.filter(scene=>!actOrder.includes(scene.act)).forEach(scene=>ordered.push(scene));
+  scenes=ordered;
   scenes.forEach((scene,index)=>{scene.num=String(index+1);});
 }
 function save(){

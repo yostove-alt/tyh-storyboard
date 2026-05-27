@@ -36,6 +36,28 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
 .btn-sm{padding:4px 9px;font-size:11px;}
 .btn-active{background:var(--accent-l);border-color:var(--accent);color:var(--accent);}
 
+/* ── STORYBOARD MENU ── */
+.storyboard-menu{position:fixed;inset:0;z-index:500;background:linear-gradient(180deg,#F7FAF4 0%,#EEF3EA 100%);display:none;overflow:auto;}
+.storyboard-menu.show{display:block;}
+.menu-shell{max-width:1080px;margin:0 auto;padding:52px 28px 64px;}
+.menu-top{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:28px;}
+.menu-kicker{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:6px;}
+.menu-title{font-family:'DM Serif Display',serif;font-size:44px;line-height:1;color:var(--text);letter-spacing:-.4px;}
+.menu-sub{font-size:14px;color:var(--muted);max-width:560px;margin-top:10px;}
+.menu-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
+.storyboard-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;}
+.storyboard-card{border:1px solid var(--border);background:var(--surface);border-radius:var(--r);padding:16px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px;min-height:172px;cursor:pointer;transition:border-color .15s,transform .15s,box-shadow .15s;}
+.storyboard-card:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 14px 34px rgba(38,48,32,.12);}
+.storyboard-card.active{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-l),var(--shadow);}
+.storyboard-card h3{font-family:'DM Serif Display',serif;font-size:24px;line-height:1.08;color:var(--text);}
+.storyboard-meta{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.06em;color:var(--faint);text-transform:uppercase;}
+.storyboard-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:auto;}
+.storyboard-stat{border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);padding:8px;}
+.storyboard-stat strong{display:block;font-family:'DM Serif Display',serif;font-size:20px;line-height:1;color:var(--accent);}
+.storyboard-stat span{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);}
+.storyboard-card-actions{display:flex;gap:6px;justify-content:flex-end;}
+.storyboard-card-actions .btn{position:relative;z-index:1;}
+
 /* ── TOOLBAR ── */
 .toolbar{background:rgba(250,251,248,.95);border-bottom:1px solid var(--border);padding:10px 24px;display:flex;align-items:center;gap:9px;flex-wrap:wrap;position:sticky;top:58px;z-index:190;}
 .toolbar-label{font-family:'DM Mono',monospace;font-size:10px;color:var(--faint);letter-spacing:.08em;text-transform:uppercase;margin-right:4px;}
@@ -491,6 +513,7 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
     <input type="file" accept="audio/*,.mpeg,.mp3,.wav,.m4a" style="display:none;" onchange="loadAudioTrack(this)">
   </label>
   <div class="hdr-actions">
+    <button class="btn btn-sm" onclick="showStoryboardMenu()">Storyboards</button>
     <button class="btn btn-primary btn-sm" id="saveCloudBtn" onclick="saveToCloud()">Save local</button>
     <button class="btn btn-gold btn-sm" onclick="window.print()">PDF</button>
     <button class="btn btn-sm" onclick="exportJSON()">Export</button>
@@ -597,6 +620,23 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
 <div class="toast" id="toast"></div>
 <input type="file" id="importF" class="hf" accept=".json" onchange="handleImport(event)">
 
+<div class="storyboard-menu" id="storyboardMenu">
+  <div class="menu-shell">
+    <div class="menu-top">
+      <div>
+        <div class="menu-kicker">Storyboard Library</div>
+        <h1 class="menu-title">Choose a board</h1>
+        <p class="menu-sub">Open an existing storyboard or create a new one. Each board keeps its own scenes, setup, music notes, fields, statuses, locations, cameras, and layout.</p>
+      </div>
+      <div class="menu-actions">
+        <button class="btn btn-primary" onclick="createStoryboard()">+ New storyboard</button>
+        <button class="btn" onclick="hideStoryboardMenu()">Open current</button>
+      </div>
+    </div>
+    <div class="storyboard-grid" id="storyboardGrid"></div>
+  </div>
+</div>
+
 <script>
 const LOCS=['Outside courtroom','Courtroom set','Central Avenue','Park','Eye doctor office','Boat','Assorted / montage','Other'];
 const LOC_COLORS={'Outside courtroom':'#534AB7','Courtroom set':'#534AB7','Central Avenue':'#085041','Park':'#633806','Eye doctor office':'#0C447C','Boat':'#712B13','Assorted / montage':'#444441','Other':'#888'};
@@ -614,6 +654,50 @@ const FIELD_DEFAULTS=[
   {key:'wardrobe',label:'Wardrobe',visible:true,defaultOpen:false,kind:'text'},
   {key:'props',label:'Props',visible:true,defaultOpen:false,kind:'text'}
 ];
+const STORYBOARD_INDEX_KEY='jdb_storyboards_index';
+const ACTIVE_STORYBOARD_KEY='jdb_active_storyboard';
+const LEGACY_BOARD_KEYS=['jdb_v4','jdb_field_settings','jdb_acts','jdb_locations','jdb_statuses','jdb_cameras','jdb_viewer_ratio','jdb_card_height','jdb_song_info','jdb_audio_name'];
+let storyboards=loadStoryboardIndex();
+let activeStoryboardId=loadActiveStoryboardId();
+
+function boardKey(key,id=activeStoryboardId){return 'jdb_board_'+id+'_'+key;}
+function boardGet(key){
+  const scoped=localStorage.getItem(boardKey(key));
+  if(scoped!==null)return scoped;
+  return localStorage.getItem(key);
+}
+function boardSet(key,value){localStorage.setItem(boardKey(key),value);}
+function boardRemove(key){localStorage.removeItem(boardKey(key));}
+function loadStoryboardIndex(){
+  try{
+    const parsed=JSON.parse(localStorage.getItem(STORYBOARD_INDEX_KEY)||'[]');
+    if(Array.isArray(parsed)&&parsed.length)return parsed;
+  }catch(e){}
+  const starter={id:'little-barditchevers',name:'Little Barditchevers',createdAt:Date.now(),updatedAt:Date.now()};
+  localStorage.setItem(STORYBOARD_INDEX_KEY,JSON.stringify([starter]));
+  localStorage.setItem(ACTIVE_STORYBOARD_KEY,starter.id);
+  return [starter];
+}
+function loadActiveStoryboardId(){
+  const saved=localStorage.getItem(ACTIVE_STORYBOARD_KEY);
+  return storyboards.some(board=>board.id===saved)?saved:storyboards[0].id;
+}
+function persistStoryboardIndex(){
+  localStorage.setItem(STORYBOARD_INDEX_KEY,JSON.stringify(storyboards));
+  localStorage.setItem(ACTIVE_STORYBOARD_KEY,activeStoryboardId);
+}
+function currentStoryboard(){return storyboards.find(board=>board.id===activeStoryboardId)||storyboards[0];}
+function touchStoryboard(){
+  const board=currentStoryboard();
+  if(board){board.updatedAt=Date.now();persistStoryboardIndex();updateProjectName();}
+}
+function slugBoardName(name){
+  const base=String(name||'Storyboard').trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,36)||'storyboard';
+  let id=base,idx=2;
+  while(storyboards.some(board=>board.id===id)){id=base+'-'+idx;idx++;}
+  return id;
+}
+function starterBoardName(){return currentStoryboard()?.name||'Little Barditchevers';}
 
 const INIT=[
   {id:1,act:'Act 1 — Courtroom',num:'1',title:'Intro',time:'0:00 – 0:05',location:'Outside courtroom',status:'Not shot',lyrics:'Instrumental only',shots:['Slow push into courthouse doors — boys in suits outside','Low angle: polished shoes, Kedushas Levi sefer under arm','One boy straightens tie — they push open the doors'],note:'Cold open. Establish the world before any lyrics hit.',props:'Suits, Kedushas Levi sefer',camera:['Cam A — Moti'],media:[]},
@@ -671,7 +755,7 @@ function withoutTransientMedia(list){
 }
 function loadScenes(){
   try{
-    const s=localStorage.getItem('jdb_v4');
+    const s=boardGet('jdb_v4');
     if(s){
       const p=JSON.parse(s);
       if(p&&p.length)return mergeStarterScenes(withoutTransientMedia(p));
@@ -701,28 +785,29 @@ function restoreMissingStarterLyrics(list){
   return restored;
 }
 function save(){
-  localStorage.setItem('jdb_localAt',String(Date.now()));
+  boardSet('jdb_localAt',String(Date.now()));
   try{
-    localStorage.setItem('jdb_v4',JSON.stringify(scenes));
+    boardSet('jdb_v4',JSON.stringify(scenes));
   }catch(e){
-    localStorage.setItem('jdb_v4',JSON.stringify(withoutTransientMedia(scenes)));
+    boardSet('jdb_v4',JSON.stringify(withoutTransientMedia(scenes)));
     toast('Saved board text; large media is preview-only');
   }
+  touchStoryboard();
 }
 function loadFieldSettings(){
   let stored=[];
   try{
-    const raw=localStorage.getItem('jdb_field_settings');
+    const raw=boardGet('jdb_field_settings');
     if(raw)stored=JSON.parse(raw)||[];
   }catch(e){}
   stored=stored.filter(f=>!REMOVED_FIELD_KEYS.includes(f.key));
   if(stored.length)return stored.map(f=>({...f,kind:f.kind||'text'}));
   return FIELD_DEFAULTS.map(def=>({...def}));
 }
-function saveFieldSettings(){localStorage.setItem('jdb_field_settings',JSON.stringify(fieldSettings));}
+function saveFieldSettings(){boardSet('jdb_field_settings',JSON.stringify(fieldSettings));touchStoryboard();}
 function loadOptionList(key,defaults){
   try{
-    const raw=localStorage.getItem(key);
+    const raw=boardGet(key);
     if(raw){
       const parsed=JSON.parse(raw);
       if(Array.isArray(parsed)&&parsed.length)return parsed.filter(Boolean);
@@ -731,12 +816,13 @@ function loadOptionList(key,defaults){
   return [...defaults];
 }
 function loadViewerRatio(){
-  const saved=localStorage.getItem('jdb_viewer_ratio');
+  const saved=boardGet('jdb_viewer_ratio');
   return saved==='9:16'?'9:16':'16:9';
 }
 function saveViewerRatio(value){
   viewerRatio=value==='9:16'?'9:16':'16:9';
-  localStorage.setItem('jdb_viewer_ratio',viewerRatio);
+  boardSet('jdb_viewer_ratio',viewerRatio);
+  touchStoryboard();
   applyViewerRatio();
 }
 function applyViewerRatio(){
@@ -744,13 +830,14 @@ function applyViewerRatio(){
   document.body.classList.toggle('viewer-portrait',viewerRatio==='9:16');
 }
 function loadCardHeight(){
-  const saved=parseInt(localStorage.getItem('jdb_card_height'),10);
+  const saved=parseInt(boardGet('jdb_card_height'),10);
   return Number.isFinite(saved)?Math.max(520,Math.min(960,saved)):640;
 }
 function saveCardHeight(value){
   const next=parseInt(value,10);
   cardHeight=Number.isFinite(next)?Math.max(520,Math.min(960,next)):640;
-  localStorage.setItem('jdb_card_height',String(cardHeight));
+  boardSet('jdb_card_height',String(cardHeight));
+  touchStoryboard();
   applyCardHeight();
 }
 function applyCardHeight(){
@@ -759,7 +846,7 @@ function applyCardHeight(){
 function loadSongInfo(){
   const fallback={title:'Little Barditchevers',artist:'TYH',lyrics:defaultMasterLyrics()};
   try{
-    const info=JSON.parse(localStorage.getItem('jdb_song_info')||'{}')||{};
+    const info=JSON.parse(boardGet('jdb_song_info')||'{}')||{};
     if(!String(info.lyrics||'').trim())info.lyrics=fallback.lyrics;
     if(!info.title)info.title=fallback.title;
     if(!info.artist)info.artist=fallback.artist;
@@ -767,7 +854,8 @@ function loadSongInfo(){
   }catch(e){return fallback;}
 }
 function saveSongInfo(){
-  localStorage.setItem('jdb_song_info',JSON.stringify(songInfo));
+  boardSet('jdb_song_info',JSON.stringify(songInfo));
+  touchStoryboard();
 }
 function getElevenLabsKey(){return sessionStorage.getItem('jdb_elevenlabs_key')||'';}
 function setElevenLabsKey(value){
@@ -776,10 +864,10 @@ function setElevenLabsKey(value){
   else sessionStorage.removeItem('jdb_elevenlabs_key');
 }
 function saveOptionLists(){
-  localStorage.setItem('jdb_acts',JSON.stringify(acts));
-  localStorage.setItem('jdb_locations',JSON.stringify(locations));
-  localStorage.setItem('jdb_statuses',JSON.stringify(statuses));
-  localStorage.setItem('jdb_cameras',JSON.stringify(cameras));
+  boardSet('jdb_acts',JSON.stringify(acts));
+  boardSet('jdb_locations',JSON.stringify(locations));
+  boardSet('jdb_statuses',JSON.stringify(statuses));
+  boardSet('jdb_cameras',JSON.stringify(cameras));
 }
 function uniqueList(values){return [...new Set(values.map(v=>String(v||'').trim()).filter(Boolean))];}
 function syncOptionsFromScenes(){
@@ -810,6 +898,143 @@ function blankCompose(){
   return base;
 }
 function toast(msg,d=2200){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),d);}
+
+// ── STORYBOARD LIBRARY ──
+function updateProjectName(){
+  const el=document.getElementById('projName');
+  if(el)el.textContent=(currentStoryboard()?.name||'Storyboard').toUpperCase();
+}
+function boardStoredValue(id,key){
+  const scoped=localStorage.getItem(boardKey(key,id));
+  if(scoped!==null)return scoped;
+  return id==='little-barditchevers'?localStorage.getItem(key):null;
+}
+function boardScenesForStats(id){
+  try{
+    const raw=boardStoredValue(id,'jdb_v4');
+    if(raw){
+      const parsed=JSON.parse(raw);
+      if(Array.isArray(parsed))return parsed;
+    }
+  }catch(e){}
+  return id==='little-barditchevers'?INIT:[];
+}
+function storyboardStats(id){
+  const list=boardScenesForStats(id);
+  const actsCount=uniqueList(list.map(scene=>scene.act)).length;
+  const timed=list.filter(scene=>parseTimecode(scene.time)?.end!==null).length;
+  return {scenes:list.length,acts:actsCount,timed};
+}
+function showStoryboardMenu(){
+  renderStoryboardMenu();
+  document.getElementById('storyboardMenu').classList.add('show');
+}
+function hideStoryboardMenu(){
+  document.getElementById('storyboardMenu').classList.remove('show');
+}
+function renderStoryboardMenu(){
+  const grid=document.getElementById('storyboardGrid');
+  if(!grid)return;
+  grid.innerHTML='';
+  storyboards.forEach(board=>{
+    const stats=storyboardStats(board.id);
+    const card=document.createElement('div');
+    card.className='storyboard-card'+(board.id===activeStoryboardId?' active':'');
+    card.onclick=()=>openStoryboard(board.id);
+    const meta=document.createElement('div');meta.className='storyboard-meta';meta.textContent=board.id===activeStoryboardId?'Current storyboard':'Updated '+new Date(board.updatedAt||board.createdAt||Date.now()).toLocaleDateString();
+    const title=document.createElement('h3');title.textContent=board.name;
+    const statWrap=document.createElement('div');statWrap.className='storyboard-stats';
+    [['Scenes',stats.scenes],['Acts',stats.acts],['Timed',stats.timed]].forEach(([label,value])=>{
+      const stat=document.createElement('div');stat.className='storyboard-stat';
+      stat.innerHTML='<strong>'+value+'</strong><span>'+label+'</span>';
+      statWrap.appendChild(stat);
+    });
+    const actions=document.createElement('div');actions.className='storyboard-card-actions';
+    const rename=document.createElement('button');rename.className='btn btn-sm';rename.textContent='Rename';rename.onclick=e=>{e.stopPropagation();renameStoryboard(board.id);};
+    const dup=document.createElement('button');dup.className='btn btn-sm';dup.textContent='Duplicate';dup.onclick=e=>{e.stopPropagation();duplicateStoryboard(board.id);};
+    actions.appendChild(rename);actions.appendChild(dup);
+    if(storyboards.length>1){
+      const del=document.createElement('button');del.className='btn btn-sm';del.textContent='Delete';del.onclick=e=>{e.stopPropagation();deleteStoryboard(board.id);};
+      actions.appendChild(del);
+    }
+    card.appendChild(meta);card.appendChild(title);card.appendChild(statWrap);card.appendChild(actions);grid.appendChild(card);
+  });
+}
+function reloadBoardState(){
+  if(globalAudio){globalAudio.pause();globalAudio=null;}
+  selectedSceneIds.clear();
+  sectionEnd=null;currentPlaybackSceneId=null;currentPlaybackStart=null;
+  scenes=restoreMissingStarterLyrics(loadScenes());
+  fieldSettings=loadFieldSettings();
+  acts=loadOptionList('jdb_acts',DEFAULT_ACTS);
+  locations=loadOptionList('jdb_locations',DEFAULT_LOCS);
+  statuses=loadOptionList('jdb_statuses',DEFAULT_STATUSES);
+  cameras=loadOptionList('jdb_cameras',DEFAULT_CAMS);
+  viewerRatio=loadViewerRatio();
+  cardHeight=loadCardHeight();
+  compose=blankCompose();
+  songInfo=loadSongInfo();
+  chatMessages=[{role:'assistant',text:'Board ready.'}];
+  claudeMessages=[{role:'assistant',text:'Claude board chat ready.'}];
+  syncOptionsFromScenes();
+  applyViewerRatio();applyCardHeight();updateProjectName();
+  document.getElementById('hdrAudio').style.display='none';
+  render();renderPanel();
+}
+function openStoryboard(id){
+  if(id===activeStoryboardId){hideStoryboardMenu();return;}
+  activeStoryboardId=id;
+  persistStoryboardIndex();
+  reloadBoardState();
+  hideStoryboardMenu();
+  toast('Opened '+(currentStoryboard()?.name||'storyboard'));
+}
+function createStoryboard(){
+  const name=(prompt('Storyboard name:','New storyboard')||'').trim();
+  if(!name)return;
+  const board={id:slugBoardName(name),name,createdAt:Date.now(),updatedAt:Date.now()};
+  storyboards.unshift(board);
+  activeStoryboardId=board.id;
+  persistStoryboardIndex();
+  reloadBoardState();
+  showStoryboardMenu();
+  toast('Storyboard created');
+}
+function renameStoryboard(id){
+  const board=storyboards.find(item=>item.id===id);
+  if(!board)return;
+  const name=(prompt('Rename storyboard:',board.name)||'').trim();
+  if(!name)return;
+  board.name=name;board.updatedAt=Date.now();persistStoryboardIndex();updateProjectName();renderStoryboardMenu();toast('Renamed');
+}
+function copyBoardStorage(fromId,toId){
+  LEGACY_BOARD_KEYS.forEach(key=>{
+    const value=boardStoredValue(fromId,key);
+    if(value!==null)localStorage.setItem(boardKey(key,toId),value);
+  });
+}
+function duplicateStoryboard(id){
+  const source=storyboards.find(item=>item.id===id);
+  if(!source)return;
+  const name=(prompt('Duplicate as:',source.name+' copy')||'').trim();
+  if(!name)return;
+  const board={id:slugBoardName(name),name,createdAt:Date.now(),updatedAt:Date.now()};
+  copyBoardStorage(id,board.id);
+  storyboards.unshift(board);
+  activeStoryboardId=board.id;
+  persistStoryboardIndex();
+  reloadBoardState();showStoryboardMenu();toast('Storyboard duplicated');
+}
+function deleteStoryboard(id){
+  const board=storyboards.find(item=>item.id===id);
+  if(!board||storyboards.length<2)return;
+  if(!confirm('Delete "'+board.name+'"?'))return;
+  storyboards=storyboards.filter(item=>item.id!==id);
+  LEGACY_BOARD_KEYS.forEach(key=>localStorage.removeItem(boardKey(key,id)));
+  if(activeStoryboardId===id)activeStoryboardId=storyboards[0].id;
+  persistStoryboardIndex();
+  reloadBoardState();showStoryboardMenu();toast('Storyboard deleted');
+}
 
 // ── PANEL ──
 function setPanel(open){
@@ -883,7 +1108,7 @@ function loadLyricsAudioFile(file){
   songInfo.fileName=file.name;
   saveSongInfo();
   const url=URL.createObjectURL(file);
-  localStorage.setItem('jdb_audio_name',file.name.replace(/\.[^.]+$/,''));
+  boardSet('jdb_audio_name',file.name.replace(/\.[^.]+$/,''));
   initAudio(url,file.name.replace(/\.[^.]+$/,''));
   window.jdbSongFile=file;
   renderPanel();
@@ -1975,7 +2200,7 @@ function makeAnimaticTracks(){
   const main=document.createElement('div');main.className='animatic-track';
   const mainLabel=document.createElement('strong');mainLabel.textContent='Main audio';
   const mainList=document.createElement('div');mainList.className='animatic-track-list';
-  const mainChip=document.createElement('span');mainChip.className='animatic-chip';mainChip.textContent=localStorage.getItem('jdb_audio_name')||songInfo.fileName||'Use Audio track or Music upload';
+  const mainChip=document.createElement('span');mainChip.className='animatic-chip';mainChip.textContent=boardGet('jdb_audio_name')||songInfo.fileName||'Use Audio track or Music upload';
   mainList.appendChild(mainChip);main.appendChild(mainLabel);main.appendChild(mainList);lanes.appendChild(main);
   return lanes;
 }
@@ -2484,8 +2709,8 @@ function initAudio(url,name){
 async function loadAudioTrack(input){
   const file=input.files[0];if(!file)return;
   const url=URL.createObjectURL(file);
-  localStorage.removeItem('jdb_audio_url');
-  localStorage.setItem('jdb_audio_name',file.name.replace(/\.[^.]+$/,''));
+  boardRemove('jdb_audio_url');
+  boardSet('jdb_audio_name',file.name.replace(/\.[^.]+$/,''));
   songInfo.fileName=file.name;saveSongInfo();window.jdbSongFile=file;
   initAudio(url,file.name.replace(/\.[^.]+$/,''));
   toast('Audio loaded for this session');
@@ -2548,7 +2773,7 @@ function replayAnimatic(){
   globalAudio.currentTime=0;globalAudio.play();document.getElementById('audioPlayBtn').textContent='⏸';updatePlaybackControls();updateAnimaticPreview();
 }
 function scrubAudio(val){if(globalAudio&&globalAudio.duration){globalAudio.currentTime=(val/100)*globalAudio.duration;updatePlaybackControls();updateAnimaticPreview();}}
-function clearAudio(){if(globalAudio){globalAudio.pause();globalAudio=null;}sectionEnd=null;currentPlaybackSceneId=null;currentPlaybackStart=null;updatePlaybackControls();localStorage.removeItem('jdb_audio_url');localStorage.removeItem('jdb_audio_name');document.getElementById('hdrAudio').style.display='none';}
+function clearAudio(){if(globalAudio){globalAudio.pause();globalAudio=null;}sectionEnd=null;currentPlaybackSceneId=null;currentPlaybackStart=null;updatePlaybackControls();boardRemove('jdb_audio_url');boardRemove('jdb_audio_name');document.getElementById('hdrAudio').style.display='none';}
 function updatePlaybackControls(){
   document.querySelectorAll('.section-clock').forEach(clock=>{
     const id=Number(clock.dataset.sceneId);
@@ -2639,11 +2864,13 @@ function drawAnimaticFrame(ctx,canvas,clips,images,t){
 }
 // EXPORT
 function exportJSON(){const blob=new Blob([JSON.stringify({scenes,fieldSettings,acts,locations,statuses,cameras,viewerRatio,cardHeight},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='judoboards_barditchevers.json';a.click();toast('Exported!');}
-function handleImport(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const data=JSON.parse(ev.target.result);if(Array.isArray(data)){scenes=data;}else{scenes=data.scenes||[];if(Array.isArray(data.fieldSettings)){localStorage.setItem('jdb_field_settings',JSON.stringify(data.fieldSettings));fieldSettings=loadFieldSettings();}if(Array.isArray(data.acts))acts=data.acts;if(Array.isArray(data.locations))locations=data.locations;if(Array.isArray(data.statuses))statuses=data.statuses;if(Array.isArray(data.cameras))cameras=data.cameras;if(data.viewerRatio)saveViewerRatio(data.viewerRatio);if(data.cardHeight)saveCardHeight(data.cardHeight);}syncOptionsFromScenes();save();render();toast('Imported!');}catch{toast('Invalid file');}};r.readAsText(f);e.target.value='';}
+function handleImport(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const data=JSON.parse(ev.target.result);if(Array.isArray(data)){scenes=data;}else{scenes=data.scenes||[];if(Array.isArray(data.fieldSettings)){boardSet('jdb_field_settings',JSON.stringify(data.fieldSettings));fieldSettings=loadFieldSettings();}if(Array.isArray(data.acts))acts=data.acts;if(Array.isArray(data.locations))locations=data.locations;if(Array.isArray(data.statuses))statuses=data.statuses;if(Array.isArray(data.cameras))cameras=data.cameras;if(data.viewerRatio)saveViewerRatio(data.viewerRatio);if(data.cardHeight)saveCardHeight(data.cardHeight);}syncOptionsFromScenes();save();render();toast('Imported!');}catch{toast('Invalid file');}};r.readAsText(f);e.target.value='';}
 
 render();
 setPanel(panelOpen);
-localStorage.removeItem('jdb_audio_url');
+boardRemove('jdb_audio_url');
+updateProjectName();
+showStoryboardMenu();
 </script>
 
 <script>

@@ -647,6 +647,7 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
 const LOCS=['Outside courtroom','Courtroom set','Central Avenue','Park','Eye doctor office','Boat','Assorted / montage','Other'];
 const LOC_COLORS={'Outside courtroom':'#534AB7','Courtroom set':'#534AB7','Central Avenue':'#085041','Park':'#633806','Eye doctor office':'#0C447C','Boat':'#712B13','Assorted / montage':'#444441','Other':'#888'};
 const DEFAULT_ACTS=['Act 1 — Courtroom','Act 2 — Central Avenue','Act 3 — Park','Act 4 — Eye doctor','Act 5 — Boat + Finale'];
+const NEW_BOARD_ACTS=['Act 1','Act 2','Act 3'];
 const DEFAULT_LOCS=[...LOCS];
 const DEFAULT_STATUSES=['Not shot','Scheduled','Shot ✓','Locked'];
 const STATUS_COLORS={'Not shot':'#B0A898','Scheduled':'#C4952A','Shot ✓':'#2A5C3F','Locked':'#7A5C3F'};
@@ -723,6 +724,34 @@ function defaultMasterLyrics(){
     .filter(text=>text&&!/^instrumental/i.test(text))
     .join('\n\n');
 }
+function newBoardScenes(name='New storyboard'){
+  return NEW_BOARD_ACTS.map((act,index)=>({
+    id:index+1,
+    act,
+    num:String(index+1),
+    title:index===0?'Opening scene':index===1?'Middle scene':'Final scene',
+    time:index===0?'0:00 – 0:10':index===1?'0:10 – 0:20':'0:20 – 0:30',
+    location:'Other',
+    status:'Not shot',
+    lyrics:'',
+    shots:[''],
+    note:'',
+    extras:'',
+    wardrobe:'',
+    props:'',
+    camera:[],
+    media:[]
+  }));
+}
+function seedNewStoryboard(id,name){
+  localStorage.setItem(boardKey('jdb_v4',id),JSON.stringify(newBoardScenes(name)));
+  localStorage.setItem(boardKey('jdb_acts',id),JSON.stringify(NEW_BOARD_ACTS));
+  localStorage.setItem(boardKey('jdb_locations',id),JSON.stringify(DEFAULT_LOCS));
+  localStorage.setItem(boardKey('jdb_statuses',id),JSON.stringify(DEFAULT_STATUSES));
+  localStorage.setItem(boardKey('jdb_cameras',id),JSON.stringify(DEFAULT_CAMS));
+  localStorage.setItem(boardKey('jdb_field_settings',id),JSON.stringify(FIELD_DEFAULTS));
+  localStorage.setItem(boardKey('jdb_song_info',id),JSON.stringify({title:name,artist:'',lyrics:''}));
+}
 
 let scenes=restoreMissingStarterLyrics(loadScenes());
 let fieldSettings=loadFieldSettings();
@@ -767,9 +796,11 @@ function loadScenes(){
       if(p&&p.length)return mergeStarterScenes(withoutTransientMedia(p));
     }
   }catch(e){}
-  return JSON.parse(JSON.stringify(INIT));
+  const fallback=activeStoryboardId==='little-barditchevers'?INIT:newBoardScenes(currentStoryboard()?.name);
+  return JSON.parse(JSON.stringify(fallback));
 }
 function mergeStarterScenes(list){
+  if(activeStoryboardId!=='little-barditchevers')return list;
   const byId=new Set(list.map(s=>s.id));
   const byTitle=new Set(list.map(s=>(s.act||'')+'|'+(s.title||'')));
   const repaired=[...list];
@@ -780,6 +811,7 @@ function mergeStarterScenes(list){
   return repaired;
 }
 function restoreMissingStarterLyrics(list){
+  if(activeStoryboardId!=='little-barditchevers')return list;
   let changed=false;
   const restored=list.map(scene=>{
     if(String(scene.lyrics||'').trim())return scene;
@@ -923,7 +955,8 @@ function boardScenesForStats(id){
       if(Array.isArray(parsed))return parsed;
     }
   }catch(e){}
-  return id==='little-barditchevers'?INIT:[];
+  const board=storyboards.find(item=>item.id===id);
+  return id==='little-barditchevers'?INIT:newBoardScenes(board?.name);
 }
 function storyboardStats(id){
   const list=boardScenesForStats(id);
@@ -1001,6 +1034,7 @@ function createStoryboard(){
   const board={id:slugBoardName(name),name,createdAt:Date.now(),updatedAt:Date.now()};
   storyboards.unshift(board);
   activeStoryboardId=board.id;
+  seedNewStoryboard(board.id,name);
   persistStoryboardIndex();
   reloadBoardState();
   showStoryboardMenu();

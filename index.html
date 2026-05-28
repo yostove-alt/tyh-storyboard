@@ -699,6 +699,7 @@ const SUPABASE_ANON_KEY_KEY='jdb_supabase_anon_key';
 const SUPABASE_SESSION_KEY='jdb_supabase_session';
 const SUPABASE_TABLE='storyboard_snapshots';
 const SUPABASE_ROW_ID='default';
+const SUPABASE_STORAGE_BUCKET='storyboard-media';
 const AUDIO_DB='jdb_audio_store';
 const AUDIO_STORE='tracks';
 const MEDIA_DB='jdb_media_store';
@@ -938,7 +939,7 @@ applyCardHeight();
 
 function localMediaRecord(m){
   if(!m)return null;
-  if(m.storedId)return {type:m.type||'image',name:m.name||'',storedId:m.storedId,size:m.size||0};
+  if(m.storedId)return {type:m.type||'image',name:m.name||'',url:isShareableMediaUrl(m.url)?m.url:'',storedId:m.storedId,storagePath:m.storagePath||'',size:m.size||0};
   if(m.transient||String(m.url||'').startsWith('blob:'))return null;
   return {type:m.type||'image',name:m.name||'',url:m.url||''};
 }
@@ -950,8 +951,15 @@ function withoutSharedHeavyMedia(list){
     ...scene,
     media:(scene.media||[])
       .filter(m=>m&&m.url&&!String(m.url||'').startsWith('blob:')&&!String(m.url||'').startsWith('data:'))
-      .map(m=>({type:m.type||'image',name:m.name||'',url:m.url||''}))
+      .map(m=>({type:m.type||'image',name:m.name||'',url:m.url||'',storagePath:m.storagePath||''}))
   }));
+}
+function withoutSharedHeavyMood(items){
+  return (items||[]).filter(Boolean).map(item=>{
+    if(item.kind==='note'||item.kind==='link')return item;
+    if(isShareableMediaUrl(item.url))return {id:item.id||newMediaId(),type:item.type||'image',name:item.name||'',url:item.url,storagePath:item.storagePath||'',createdAt:item.createdAt||Date.now()};
+    return null;
+  }).filter(Boolean);
 }
 function localMoodRecord(item){
   if(!item)return null;
@@ -977,7 +985,7 @@ function sharedBoardValue(key,value){
   if(key==='jdb_moodboard'){
     try{
       const parsed=JSON.parse(value);
-      if(Array.isArray(parsed))return JSON.stringify(parsed.filter(item=>item&&['note','link'].includes(item.kind)));
+      if(Array.isArray(parsed))return JSON.stringify(withoutSharedHeavyMood(parsed));
     }catch(e){}
     return '[]';
   }
@@ -1317,6 +1325,7 @@ function deleteStoryboard(id){
 
 // ── SHARED DATABASE SAVE ──
 async function collectSharedSnapshot(){
+  await syncLocalMediaToCloud();
   save();
   const boards={};
   for(const board of storyboards){
@@ -1412,6 +1421,70 @@ function cloudHeaders(auth=false){
     Authorization:'Bearer '+(auth&&session?.access_token?session.access_token:getSupabaseAnonKey()),
     'Content-Type':'application/json'
   };
+}
+function isShareableMediaUrl(url){
+  return /^https?:\/\//i.test(String(url||''));
+}
+function cleanStorageName(name){
+  const safe=String(name||'media').trim().replace(/[^a-zA-Z0-9._-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80);
+  return safe||'media';
+}
+function storagePublicUrl(path){
+  return getSupabaseUrl()+'/storage/v1/object/public/'+encodeURIComponent(SUPABASE_STORAGE_BUCKET)+'/'+path.split('/').map(encodeURIComponent).join('/');
+}
+async function uploadFileToStorage(file,{mediaId=newMediaId(),boardId=activeStoryboardId}={}){
+  if(!cloudConfigured()||!getCloudSession())return null;
+  await refreshCloudSession();
+  const session=getCloudSession();
+  if(!session?.access_token)return null;
+  const path=boardId+'/'+mediaId+'/'+cleanStorageName(file.name);
+  const response=await fetch(getSupabaseUrl()+'/storage/v1/object/'+encodeURIComponent(SUPABASE_STORAGE_BUCKET)+'/'+path.split('/').map(encodeURIComponent).join('/'),{
+    method:'POST',
+    headers:{
+      apikey:getSupabaseAnonKey(),
+      Authorization:'Bearer '+session.access_token,
+      'x-upsert':'true',
+      'Content-Type':file.type||'application/octet-stream',
+      'Cache-Control':'3600'
+    },
+    body:file
+  });
+  if(!response.ok){
+    let detail='';
+    try{const err=await response.json();detail=err.message||err.error||'';}catch(e){}
+    throw new Error(detail||('Storage upload failed '+response.status));
+  }
+  return {mediaId,storagePath:path,url:storagePublicUrl(path)};
+}
+async function uploadStoredMediaItem(item,boardId=activeStoryboardId){
+  if(!item?.storedId||isShareableMediaUrl(item.url))return false;
+  const stored=await getStoredMedia(item.storedId,boardId).catch(()=>null);
+  if(!stored?.blob)return false;
+  const file=new File([stored.blob],item.name||stored.name||'media',{type:stored.type||item.type||'application/octet-stream'});
+  const uploaded=await uploadFileToStorage(file,{mediaId:item.storedId,boardId});
+  if(!uploaded)return false;
+  item.url=uploaded.url;
+  item.storagePath=uploaded.storagePath;
+  item.name=item.name||stored.name||file.name;
+  item.type=item.type||((stored.type||'').startsWith('video')?'video':'image');
+  return true;
+}
+async function syncLocalMediaToCloud(){
+  if(!cloudConfigured()||!getCloudSession())return false;
+  let changed=false,uploaded=0,failed=0;
+  const syncItem=async item=>{
+    try{
+      if(await uploadStoredMediaItem(item)){changed=true;uploaded++;}
+    }catch(e){failed++;}
+  };
+  for(const scene of scenes){
+    for(const item of (scene.media||[]))await syncItem(item);
+  }
+  for(const item of moodboard)await syncItem(item);
+  if(changed){save();saveMoodboard();}
+  if(uploaded)toast('Uploaded '+uploaded+' media file(s) to Supabase Storage');
+  if(failed)toast(failed+' media upload(s) failed. Check Storage bucket setup.',4200);
+  return changed;
 }
 function updateCloudStatus(){
   const el=document.getElementById('cloudStatus');
@@ -3537,7 +3610,7 @@ function saveVideoOverview(value){
 function mediaLabel(item){return item.name||item.url||item.text||item.href||'Idea';}
 function moodItemById(id){return moodboard.find(item=>item.id===id);}
 function makeMoodMediaCopy(item){
-  return {type:item.type||'image',name:item.name||'',url:item.url||'',storedId:item.storedId||'',size:item.size||0};
+  return {type:item.type||'image',name:item.name||'',url:item.url||'',storedId:item.storedId||'',storagePath:item.storagePath||'',size:item.size||0};
 }
 function addMoodMediaToScene(itemId,sceneId){
   const item=moodItemById(itemId);
@@ -3855,15 +3928,26 @@ async function readLocalMediaFiles(files,callback){
   if(!valid.length){toast('No valid files');return;}
   const results=await Promise.all(valid.map(file=>new Promise(resolve=>{
     const rt=file.type.startsWith('video')?'video':'image';
+    const finishWithCloud=async item=>{
+      if(cloudConfigured()&&getCloudSession()){
+        try{
+          const uploaded=await uploadFileToStorage(file,{mediaId:item.storedId||newMediaId()});
+          item.url=uploaded.url;
+          item.storagePath=uploaded.storagePath;
+          if(item.storedId)item.storedId=uploaded.mediaId;
+        }catch(e){toast('Storage upload failed for '+file.name,3600);}
+      }
+      resolve(item);
+    };
     if(file.size>1800000||rt==='video'){
       const storedId=newMediaId();
       setStoredMedia(storedId,{blob:file,type:file.type||'',name:file.name,size:file.size,updatedAt:Date.now()})
-        .then(()=>resolve({url:URL.createObjectURL(file),type:rt,name:file.name,storedId,size:file.size}))
-        .catch(()=>resolve({url:URL.createObjectURL(file),type:rt,name:file.name,transient:true}));
+        .then(()=>finishWithCloud({url:URL.createObjectURL(file),type:rt,name:file.name,storedId,size:file.size}))
+        .catch(()=>finishWithCloud({url:URL.createObjectURL(file),type:rt,name:file.name,transient:true}));
       return;
     }
     const reader=new FileReader();
-    reader.onload=()=>resolve({url:reader.result,type:rt,name:file.name});
+    reader.onload=()=>finishWithCloud({url:reader.result,type:rt,name:file.name});
     reader.onerror=()=>resolve(null);
     reader.readAsDataURL(file);
   })));

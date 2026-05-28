@@ -2375,6 +2375,15 @@ function addOption(type,name){
   if(existing)return existing;
   list.push(value);saveOptionLists();return value;
 }
+function ensureOptionAtDisplayPosition(type,value){
+  const list=optionList(type);
+  if(list.includes(value))return;
+  const groups=type==='act'?getGroups('act'):list;
+  const displayIndex=groups.indexOf(value);
+  const insertAt=displayIndex>=0?Math.min(displayIndex,list.length):list.length;
+  list.splice(insertAt,0,value);
+  saveOptionLists();
+}
 function promptAddOption(type){
   const label=optionLabel(type).toLowerCase();
   const value=prompt('New '+label+' name:');
@@ -2392,7 +2401,7 @@ function renameOption(type,oldValue,newValue){
   if(existing){
     const idx=list.indexOf(oldValue);if(idx>=0)list.splice(idx,1);
   } else {
-    const idx=list.indexOf(oldValue);if(idx>=0)list[idx]=finalValue;
+    const idx=list.indexOf(oldValue);if(idx>=0)list[idx]=finalValue;else list.push(finalValue);
   }
   scenes.forEach(scene=>{if(scene[key]===oldValue)scene[key]=finalValue;});
   if(type==='camera'){
@@ -3009,6 +3018,7 @@ function editActName(actName,el){
     if(doneOnce)return;doneOnce=true;
     const n=inp.value.trim()||actName;
     if(n===actName){render();return;}
+    ensureOptionAtDisplayPosition('act',actName);
     renameOption('act',actName,n);
   };
   inp.onblur=done;inp.onkeydown=e=>{if(e.key==='Enter')done();if(e.key==='Escape')render();};

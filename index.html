@@ -233,6 +233,9 @@ body.panel-closed .panel-rail{left:0;}
 .story-lyrics{font-size:12px;color:var(--muted);white-space:pre-line;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;margin-top:4px;line-height:1.35;cursor:pointer;border:1px solid transparent;border-radius:var(--rs);padding:3px 5px;margin-left:-5px;}
 .story-lyrics:hover{border-color:var(--border);background:var(--surface-soft);}
 .story-lyrics.empty{color:var(--faint);font-style:italic;}
+.story-note{font-size:12px;color:var(--muted);white-space:pre-line;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;margin-top:3px;line-height:1.35;cursor:pointer;border:1px solid transparent;border-radius:var(--rs);padding:3px 5px;margin-left:-5px;background:var(--surface-soft);}
+.story-note:hover{border-color:var(--border);background:var(--accent-l);}
+.story-note.empty{color:var(--faint);font-style:italic;background:transparent;}
 .story-meta{display:flex;flex-direction:column;gap:5px;align-items:flex-end;min-width:150px;}
 .story-meta .time-badge{cursor:pointer;}
 .story-pills{display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap;}
@@ -821,6 +824,22 @@ applyCardHeight();
 function withoutTransientMedia(list){
   return list.map(scene=>({...scene,media:(scene.media||[]).filter(m=>!m.transient&&!String(m.url||'').startsWith('blob:'))}));
 }
+function withoutSharedHeavyMedia(list){
+  return list.map(scene=>({
+    ...scene,
+    media:(scene.media||[])
+      .filter(m=>m&&!String(m.url||'').startsWith('blob:')&&!String(m.url||'').startsWith('data:'))
+      .map(m=>({type:m.type||'image',name:m.name||'',url:m.url||''}))
+  }));
+}
+function sharedBoardValue(key,value){
+  if(key!=='jdb_v4')return value;
+  try{
+    const parsed=JSON.parse(value);
+    if(Array.isArray(parsed))return JSON.stringify(withoutSharedHeavyMedia(parsed));
+  }catch(e){}
+  return value;
+}
 function loadScenes(){
   try{
     const s=boardGet('jdb_v4');
@@ -1146,13 +1165,8 @@ async function collectSharedSnapshot(){
     boards[board.id]={};
     LEGACY_BOARD_KEYS.forEach(key=>{
       const value=boardStoredValue(board.id,key);
-      if(value!==null)boards[board.id][key]=value;
+      if(value!==null)boards[board.id][key]=sharedBoardValue(key,value);
     });
-    try{
-      const audio=await getStoredAudio(board.id);
-      const portableAudio=audioShareData(audio);
-      if(portableAudio)boards[board.id].audioData=portableAudio;
-    }catch(e){}
   }
   return {version:1,updatedAt:Date.now(),storyboards,boards};
 }
@@ -2709,7 +2723,10 @@ function makeStoryRow(scene){
   const lyrics=document.createElement('div');lyrics.className='story-lyrics'+(String(scene.lyrics||'').trim()?'':' empty');lyrics.title='Click to edit lyrics';
   lyrics.textContent=String(scene.lyrics||'').trim()||'Click to add lyrics…';
   lyrics.onclick=e=>{e.stopPropagation();iEditTA(scene.id,'lyrics',lyrics,'lyrics-ta');};
-  main.appendChild(kicker);main.appendChild(title);main.appendChild(lyrics);row.appendChild(main);
+  const note=document.createElement('div');note.className='story-note'+(String(scene.note||'').trim()?'':' empty');note.title="Click to edit director's note";
+  note.textContent=String(scene.note||'').trim()||"Click to add director's note…";
+  note.onclick=e=>{e.stopPropagation();iEditTA(scene.id,'note',note,'note-ta');};
+  main.appendChild(kicker);main.appendChild(title);main.appendChild(lyrics);main.appendChild(note);row.appendChild(main);
   const meta=document.createElement('div');meta.className='story-meta';
   const time=document.createElement('span');time.className='time-badge';time.title='Click to play/pause. Double-click to edit.';time.textContent=scene.time||'--';
   time.onclick=e=>{

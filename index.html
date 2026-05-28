@@ -2569,7 +2569,7 @@ function getGroupColor(val,field){
   return '#888';
 }
 function getGroups(field){
-  if(field==='act')return acts;
+  if(field==='act')return uniqueList([...acts,...scenes.map(s=>s.act)]);
   const present=uniqueList(scenes.map(s=>getGroupValue(s,field)));
   const preferred=field==='location'?locations:field==='status'?statuses:field==='camera'?cameras:[];
   return uniqueList([...preferred.filter(v=>present.includes(v)),...present]);
@@ -3002,7 +3002,17 @@ function iEditLoc(id,el){
   const done=()=>{if(doneOnce)return;doneOnce=true;if(sel.value==='＋ Add location…'){const added=promptAddOption('location');if(added)s.location=added;}else{s.location=sel.value;}save();render();};
   sel.onblur=done;sel.onchange=done;
 }
-function editActName(actName,el){const inp=document.createElement('input');inp.className='act-name-inp';inp.value=actName;el.replaceWith(inp);inp.focus();inp.select();const done=()=>{const n=inp.value.trim()||actName;scenes.forEach(s=>{if(s.act===actName)s.act=n;});save();render();};inp.onblur=done;inp.onkeydown=e=>{if(e.key==='Enter')done();if(e.key==='Escape')render();};}
+function editActName(actName,el){
+  const inp=document.createElement('input');inp.className='act-name-inp';inp.value=actName;el.replaceWith(inp);inp.focus();inp.select();
+  let doneOnce=false;
+  const done=()=>{
+    if(doneOnce)return;doneOnce=true;
+    const n=inp.value.trim()||actName;
+    if(n===actName){render();return;}
+    renameOption('act',actName,n);
+  };
+  inp.onblur=done;inp.onkeydown=e=>{if(e.key==='Enter')done();if(e.key==='Escape')render();};
+}
 function loadIntoPanel(id){
   const s=scenes.find(s=>s.id===id);
   compose=blankCompose();

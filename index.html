@@ -193,6 +193,33 @@ body.panel-closed .panel-rail{left:0;}
 /* ── BOARD ── */
 .board{flex:1;padding:24px 28px 88px;overflow-y:auto;min-width:0;}
 
+/* ── MOODBOARD ── */
+.mood-panel{width:310px;min-width:310px;background:var(--surface);border-left:1px solid var(--border);position:sticky;top:103px;height:calc(100vh - 103px);display:flex;flex-direction:column;box-shadow:-4px 0 20px rgba(38,48,32,.04);}
+.mood-hdr{padding:13px 14px;border-bottom:1px solid var(--border);background:var(--surface-soft);display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.mood-hdr h2{font-family:'DM Serif Display',serif;font-size:18px;line-height:1;}
+.mood-hdr span{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);}
+.mood-body{padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;scrollbar-gutter:stable;}
+.mood-body::-webkit-scrollbar{width:6px;}
+.mood-body::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:999px;}
+.mood-overview,.mood-note-input,.mood-link-input{width:100%;font-family:'Instrument Sans',sans-serif;font-size:12px;color:var(--text);background:var(--surface-soft);border:1px solid var(--border);border-radius:var(--rs);padding:8px;outline:none;resize:vertical;}
+.mood-overview{min-height:92px;}
+.mood-note-input{min-height:64px;}
+.mood-row{display:flex;gap:6px;align-items:center;}
+.mood-link-input{resize:none;min-height:0;}
+.mood-drop{border:1.5px dashed var(--border-strong);border-radius:var(--r);background:var(--bg);padding:14px 10px;text-align:center;color:var(--muted);font-size:12px;cursor:pointer;transition:all .15s;}
+.mood-drop:hover,.mood-drop.dov{border-color:var(--accent);background:var(--accent-l);color:var(--accent);}
+.mood-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.mood-item{border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);overflow:hidden;position:relative;min-height:94px;display:flex;flex-direction:column;cursor:grab;}
+.mood-item.dragging{opacity:.45;}
+.mood-item img,.mood-item video{width:100%;aspect-ratio:16/10;object-fit:cover;background:#050706;display:block;}
+.mood-card-note,.mood-card-link{padding:8px;font-size:12px;line-height:1.35;color:var(--text);word-break:break-word;min-height:62px;}
+.mood-card-link{font-family:'DM Mono',monospace;font-size:10px;color:var(--accent);}
+.mood-item-bar{display:flex;gap:4px;align-items:center;justify-content:space-between;border-top:1px solid var(--border);padding:5px;background:var(--surface);}
+.mood-item-name{font-size:10px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+.mood-mini-btn{border:1px solid var(--border);background:var(--surface-soft);border-radius:5px;color:var(--muted);font-size:10px;padding:3px 5px;cursor:pointer;flex-shrink:0;}
+.mood-mini-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-l);}
+.scene-card.mood-drop-target{border-color:var(--accent);box-shadow:0 0 0 3px rgba(42,92,63,.18),var(--shadow);}
+
 /* ACT SECTION */
 .act-block{margin-bottom:28px;}
 .act-hdr{font-family:'DM Mono',monospace;font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:14px;display:flex;align-items:center;gap:10px;}
@@ -223,7 +250,8 @@ body.panel-closed .panel-rail{left:0;}
 .story-check{width:16px;height:16px;accent-color:var(--accent);flex-shrink:0;}
 .story-drag{width:18px;height:28px;display:grid;grid-template-columns:repeat(2,3px);gap:3px;place-content:center;cursor:grab;border-radius:5px;}
 .story-drag span{width:3px;height:3px;border-radius:50%;background:var(--faint);}
-.story-thumb{width:86px;aspect-ratio:16/9;border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--faint);}
+.story-thumb{width:86px;aspect-ratio:16/9;border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--faint);cursor:pointer;}
+.story-thumb:hover{border-color:var(--accent);box-shadow:0 0 0 2px rgba(42,92,63,.14);}
 .story-thumb img,.story-thumb video{width:100%;height:100%;object-fit:cover;display:block;}
 .story-thumb svg{opacity:.35;}
 .story-main{min-width:0;}
@@ -455,6 +483,8 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
   .panel-rail,body.panel-closed .panel-rail{top:auto;bottom:14px;left:14px;transform:none;writing-mode:horizontal-tb;border-radius:999px;border:1px solid var(--accent);padding:9px 13px;}
   .panel-body{max-height:none;overflow:visible;}
   .board{padding:16px 14px 72px;}
+  .mood-panel{position:relative;top:auto;width:100%;min-width:0;height:auto;border-left:0;border-top:1px solid var(--border);}
+  .mood-grid{grid-template-columns:repeat(3,minmax(0,1fr));}
   :root{--card-w:calc(100vw - 28px);--card-h:640px;}
   .scene-grid{display:flex;}
   .chat-config{grid-template-columns:1fr 84px;}
@@ -468,7 +498,7 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
 }
 
 @media print{
-  .hdr,.toolbar,.write-panel,.card-footer,.drag-hdl,.sw-overlay,.sw-prev,.sw-next,.sw-dots,.sw-cnt,.thumb-strip,.add-scene-card,.add-act-row,.toast,.lightbox{display:none!important;}
+  .hdr,.toolbar,.write-panel,.mood-panel,.card-footer,.drag-hdl,.sw-overlay,.sw-prev,.sw-next,.sw-dots,.sw-cnt,.thumb-strip,.add-scene-card,.add-act-row,.toast,.lightbox{display:none!important;}
   .layout{display:block;}.board{padding:0;}
   .scene-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
   .scene-card{height:auto;min-height:0;border:1px solid #ccc;break-inside:avoid;}
@@ -591,6 +621,16 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
     <div class="panel-body" id="panelBody"></div>
   </div>
   <div class="board" id="board"></div>
+  <aside class="mood-panel" id="moodPanel">
+    <div class="mood-hdr">
+      <div>
+        <h2>Moodboard</h2>
+        <span>Loose ideas</span>
+      </div>
+      <button class="btn btn-sm" onclick="document.getElementById('moodFileInput').click()">Upload</button>
+    </div>
+    <div class="mood-body" id="moodBody"></div>
+  </aside>
 </div>
 
 <button class="panel-rail" id="panelRail" onclick="togglePanel()">Hide panel</button>
@@ -606,6 +646,7 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
 
 <div class="toast" id="toast"></div>
 <input type="file" id="importF" class="hf" accept=".json" onchange="handleImport(event)">
+<input type="file" id="moodFileInput" class="hf" accept="image/*,video/*,.heic,.mov,.mp4,.webm" multiple onchange="handleMoodFiles(event)">
 
 <div class="storyboard-menu" id="storyboardMenu">
   <div class="menu-shell">
@@ -648,7 +689,7 @@ const FIELD_DEFAULTS=[
 const STORYBOARD_INDEX_KEY='jdb_storyboards_index';
 const ACTIVE_STORYBOARD_KEY='jdb_active_storyboard';
 const LAST_SCREEN_KEY='jdb_last_screen';
-const LEGACY_BOARD_KEYS=['jdb_v4','jdb_field_settings','jdb_acts','jdb_locations','jdb_statuses','jdb_cameras','jdb_viewer_ratio','jdb_card_height','jdb_song_info','jdb_audio_name','jdb_slideshow_overrides'];
+const LEGACY_BOARD_KEYS=['jdb_v4','jdb_field_settings','jdb_acts','jdb_locations','jdb_statuses','jdb_cameras','jdb_viewer_ratio','jdb_card_height','jdb_song_info','jdb_audio_name','jdb_slideshow_overrides','jdb_video_overview','jdb_moodboard'];
 const DEFAULT_SUPABASE_URL='';
 const DEFAULT_SUPABASE_ANON_KEY='';
 const CLOUD_PATH='data/boards.json';
@@ -660,6 +701,8 @@ const SUPABASE_TABLE='storyboard_snapshots';
 const SUPABASE_ROW_ID='default';
 const AUDIO_DB='jdb_audio_store';
 const AUDIO_STORE='tracks';
+const MEDIA_DB='jdb_media_store';
+const MEDIA_STORE='files';
 const MAX_SAVED_AUDIO_BYTES=15*1024*1024;
 let storyboards=loadStoryboardIndex();
 let activeStoryboardId=loadActiveStoryboardId();
@@ -679,6 +722,45 @@ function openAudioDb(){
     req.onupgradeneeded=()=>req.result.createObjectStore(AUDIO_STORE);
     req.onsuccess=()=>resolve(req.result);
     req.onerror=()=>reject(req.error);
+  });
+}
+function openMediaDb(){
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open(MEDIA_DB,1);
+    req.onupgradeneeded=()=>req.result.createObjectStore(MEDIA_STORE);
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+function mediaStoreKey(id=activeStoryboardId,mediaId){return 'media_'+id+'_'+mediaId;}
+function newMediaId(){return 'm_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8);}
+async function setStoredMedia(mediaId,data,id=activeStoryboardId){
+  const db=await openMediaDb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(MEDIA_STORE,'readwrite');
+    tx.objectStore(MEDIA_STORE).put(data,mediaStoreKey(id,mediaId));
+    tx.oncomplete=()=>{db.close();resolve();};
+    tx.onerror=()=>{db.close();reject(tx.error);};
+  });
+}
+async function getStoredMedia(mediaId,id=activeStoryboardId){
+  const db=await openMediaDb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(MEDIA_STORE,'readonly');
+    const req=tx.objectStore(MEDIA_STORE).get(mediaStoreKey(id,mediaId));
+    req.onsuccess=()=>resolve(req.result||null);
+    req.onerror=()=>reject(req.error);
+    tx.oncomplete=()=>db.close();
+  });
+}
+async function removeStoredMedia(mediaId,id=activeStoryboardId){
+  if(!mediaId)return;
+  const db=await openMediaDb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(MEDIA_STORE,'readwrite');
+    tx.objectStore(MEDIA_STORE).delete(mediaStoreKey(id,mediaId));
+    tx.oncomplete=()=>{db.close();resolve();};
+    tx.onerror=()=>{db.close();reject(tx.error);};
   });
 }
 async function setStoredAudio(id,data){
@@ -837,6 +919,7 @@ let compose=blankCompose();
 let lbMedia=[];let lbIdx=0;
 let dragId=null;
 let storyDragId=null;
+let moodDragId=null;
 let setupDrag=null;
 let swiperControllers=new Map();
 let currentPlaybackSceneId=null;
@@ -847,22 +930,57 @@ let chatMessages=[{role:'assistant',text:'Board ready.'}];
 let claudeMessages=[{role:'assistant',text:'Claude board chat ready.'}];
 let activeAgentProvider=loadAgentProvider();
 let slideshowState={playing:false,time:0,startedAt:0,startTime:0,raf:null,pxPerSec:42};
+let videoOverview=boardGet('jdb_video_overview')||'';
+let moodboard=loadMoodboard();
 syncOptionsFromScenes();
 applyViewerRatio();
 applyCardHeight();
 
+function localMediaRecord(m){
+  if(!m)return null;
+  if(m.storedId)return {type:m.type||'image',name:m.name||'',storedId:m.storedId,size:m.size||0};
+  if(m.transient||String(m.url||'').startsWith('blob:'))return null;
+  return {type:m.type||'image',name:m.name||'',url:m.url||''};
+}
 function withoutTransientMedia(list){
-  return list.map(scene=>({...scene,media:(scene.media||[]).filter(m=>!m.transient&&!String(m.url||'').startsWith('blob:'))}));
+  return list.map(scene=>({...scene,media:(scene.media||[]).map(localMediaRecord).filter(Boolean)}));
 }
 function withoutSharedHeavyMedia(list){
   return list.map(scene=>({
     ...scene,
     media:(scene.media||[])
-      .filter(m=>m&&!String(m.url||'').startsWith('blob:')&&!String(m.url||'').startsWith('data:'))
+      .filter(m=>m&&m.url&&!String(m.url||'').startsWith('blob:')&&!String(m.url||'').startsWith('data:'))
       .map(m=>({type:m.type||'image',name:m.name||'',url:m.url||''}))
   }));
 }
+function localMoodRecord(item){
+  if(!item)return null;
+  if(item.kind==='note'||item.kind==='link')return {...item};
+  const media=localMediaRecord(item);
+  return media?{...media,id:item.id||newMediaId(),createdAt:item.createdAt||Date.now()}:null;
+}
+function loadMoodboard(){
+  try{
+    const raw=boardGet('jdb_moodboard');
+    if(raw){
+      const parsed=JSON.parse(raw);
+      if(Array.isArray(parsed))return parsed.filter(Boolean);
+    }
+  }catch(e){}
+  return [];
+}
+function saveMoodboard(){
+  boardSet('jdb_moodboard',JSON.stringify(moodboard.map(localMoodRecord).filter(Boolean)));
+  touchStoryboard();
+}
 function sharedBoardValue(key,value){
+  if(key==='jdb_moodboard'){
+    try{
+      const parsed=JSON.parse(value);
+      if(Array.isArray(parsed))return JSON.stringify(parsed.filter(item=>item&&['note','link'].includes(item.kind)));
+    }catch(e){}
+    return '[]';
+  }
   if(key!=='jdb_v4')return value;
   try{
     const parsed=JSON.parse(value);
@@ -918,7 +1036,7 @@ function save(){
   renumberScenes();
   boardSet('jdb_localAt',String(Date.now()));
   try{
-    boardSet('jdb_v4',JSON.stringify(scenes));
+    boardSet('jdb_v4',JSON.stringify(withoutTransientMedia(scenes)));
   }catch(e){
     boardSet('jdb_v4',JSON.stringify(withoutTransientMedia(scenes)));
     toast('Saved board text; large media is preview-only');
@@ -1117,13 +1235,16 @@ function reloadBoardState(){
   cardHeight=loadCardHeight();
   compose=blankCompose();
   songInfo=loadSongInfo();
+  videoOverview=boardGet('jdb_video_overview')||'';
+  moodboard=loadMoodboard();
   chatMessages=[{role:'assistant',text:'Board ready.'}];
   claudeMessages=[{role:'assistant',text:'Claude board chat ready.'}];
   syncOptionsFromScenes();
   applyViewerRatio();applyCardHeight();updateProjectName();
   document.getElementById('hdrAudio').style.display='none';
-  render();renderPanel();
+  render();renderPanel();renderMoodboard();
   restoreStoredAudio();
+  restoreStoredBoardMedia();
 }
 function openStoryboard(id){
   if(id===activeStoryboardId){hideStoryboardMenu();return;}
@@ -2647,12 +2768,12 @@ function render(){
   const board=document.getElementById('board');board.innerHTML='';
   if(boardView==='story'){
     renderStoryView(board);
-    renderPanel();applyFilters();
+    renderPanel();renderMoodboard();applyFilters();
     return;
   }
   if(boardView==='slideshow'){
     renderSlideshowView(board);
-    renderPanel();
+    renderPanel();renderMoodboard();
     return;
   }
   if(groupBy==='none'){
@@ -2685,7 +2806,7 @@ function render(){
       addActBtn.onclick=addAct;addActRow.appendChild(addActBtn);board.appendChild(addActRow);
     }
   }
-  renderPanel();applyFilters();
+  renderPanel();renderMoodboard();applyFilters();
 }
 
 function renderStoryView(board){
@@ -3101,7 +3222,10 @@ function makeStoryRow(scene){
 }
 function makeStoryThumb(scene){
   const thumb=document.createElement('div');thumb.className='story-thumb';
-  const media=(scene.media||[])[0];
+  const allMedia=scene.media||[];
+  const media=allMedia[0];
+  thumb.title=allMedia.length?'Open media viewer':'No media yet';
+  thumb.onclick=e=>{e.stopPropagation();if(allMedia.length)openLB(allMedia,0,scene.title);};
   if(media){
     if(media.type==='video'){const v=document.createElement('video');v.src=media.url;v.muted=true;v.preload='metadata';thumb.appendChild(v);}
     else{const img=document.createElement('img');img.src=media.url;img.alt='';thumb.appendChild(img);}
@@ -3127,9 +3251,13 @@ function makeCard(scene){
   card.addEventListener('mousedown',e=>{cardDragOk=!!e.target.closest('.drag-hdl');card.draggable=cardDragOk;});
   card.addEventListener('dragstart',e=>{if(!cardDragOk){e.preventDefault();return;}dragId=scene.id;card.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
   card.addEventListener('dragend',()=>{dragId=null;cardDragOk=false;card.draggable=false;card.classList.remove('dragging');document.querySelectorAll('.scene-card').forEach(c=>c.classList.remove('drag-over'));render();});
-  card.addEventListener('dragover',e=>{e.preventDefault();if(dragId&&dragId!==scene.id)card.classList.add('drag-over');});
-  card.addEventListener('dragleave',()=>card.classList.remove('drag-over'));
-  card.addEventListener('drop',e=>{e.preventDefault();card.classList.remove('drag-over');if(!dragId||dragId===scene.id)return;const fi=scenes.findIndex(s=>s.id===dragId);const ti=scenes.findIndex(s=>s.id===scene.id);const m=scenes.splice(fi,1)[0];scenes.splice(ti,0,m);save();render();toast('Scene moved');});
+  card.addEventListener('dragover',e=>{e.preventDefault();if(moodDragId)card.classList.add('mood-drop-target');else if(dragId&&dragId!==scene.id)card.classList.add('drag-over');});
+  card.addEventListener('dragleave',()=>{card.classList.remove('drag-over');card.classList.remove('mood-drop-target');});
+  card.addEventListener('drop',e=>{
+    e.preventDefault();card.classList.remove('drag-over');card.classList.remove('mood-drop-target');
+    if(moodDragId){addMoodMediaToScene(moodDragId,scene.id);return;}
+    if(!dragId||dragId===scene.id)return;const fi=scenes.findIndex(s=>s.id===dragId);const ti=scenes.findIndex(s=>s.id===scene.id);const m=scenes.splice(fi,1)[0];scenes.splice(ti,0,m);save();render();toast('Scene moved');
+  });
 
   // Handle
   const hdl=document.createElement('div');hdl.className='drag-hdl';hdl.innerHTML='<div class="dhdots">'+Array(6).fill('<div class="dhdot"></div>').join('')+'</div>';card.appendChild(hdl);
@@ -3401,6 +3529,95 @@ function addSceneToAct(act){const scene=createScene(act);toast('Scene added');se
 function addSceneGlobal(){addSceneToAct(activeFilters.act||acts[0]||'New act');}
 function addAct(){const name=prompt('New act name:');const added=addOption('act',name);if(!added)return;render();toast('Act added');}
 
+function saveVideoOverview(value){
+  videoOverview=value;
+  boardSet('jdb_video_overview',videoOverview);
+  touchStoryboard();
+}
+function mediaLabel(item){return item.name||item.url||item.text||item.href||'Idea';}
+function moodItemById(id){return moodboard.find(item=>item.id===id);}
+function makeMoodMediaCopy(item){
+  return {type:item.type||'image',name:item.name||'',url:item.url||'',storedId:item.storedId||'',size:item.size||0};
+}
+function addMoodMediaToScene(itemId,sceneId){
+  const item=moodItemById(itemId);
+  const scene=scenes.find(s=>s.id===sceneId);
+  if(!item||!scene)return;
+  if(item.kind==='note'){
+    scene.note=String(scene.note||'').trim()?scene.note+'\n'+item.text:item.text;
+  }else if(item.kind==='link'){
+    scene.note=String(scene.note||'').trim()?scene.note+'\n'+item.href:item.href;
+  }else{
+    scene.media=scene.media||[];
+    scene.media.push(makeMoodMediaCopy(item));
+  }
+  save();render();toast('Added to Scene '+scene.num);
+}
+function addMoodToSelected(itemId){
+  if(!selectedSceneIds.size){toast('Select one or more cards first');return;}
+  [...selectedSceneIds].forEach(sceneId=>addMoodMediaToScene(itemId,sceneId));
+}
+function deleteMoodItem(itemId){
+  moodboard=moodboard.filter(i=>i.id!==itemId);
+  saveMoodboard();renderMoodboard();
+}
+function renderMoodboard(){
+  const body=document.getElementById('moodBody');
+  if(!body)return;
+  body.innerHTML='';
+  const overview=document.createElement('textarea');overview.className='mood-overview';overview.placeholder='General paragraph about the video...';overview.value=videoOverview;
+  overview.oninput=()=>saveVideoOverview(overview.value);
+  body.appendChild(overview);
+  const drop=document.createElement('div');drop.className='mood-drop';drop.textContent='Drop or upload random images and videos';
+  drop.onclick=()=>document.getElementById('moodFileInput').click();
+  drop.ondragover=e=>{e.preventDefault();drop.classList.add('dov');};
+  drop.ondragleave=()=>drop.classList.remove('dov');
+  drop.ondrop=e=>{e.preventDefault();drop.classList.remove('dov');addMoodFiles(Array.from(e.dataTransfer.files||[]));};
+  body.appendChild(drop);
+  const note=document.createElement('textarea');note.className='mood-note-input';note.placeholder='Add a loose note...';
+  const noteBtn=document.createElement('button');noteBtn.className='btn btn-sm';noteBtn.textContent='Add note';
+  noteBtn.onclick=()=>{const text=note.value.trim();if(!text)return;moodboard.unshift({id:newMediaId(),kind:'note',text,createdAt:Date.now()});note.value='';saveMoodboard();renderMoodboard();};
+  body.appendChild(note);body.appendChild(noteBtn);
+  const row=document.createElement('div');row.className='mood-row';
+  const link=document.createElement('input');link.className='mood-link-input';link.placeholder='Paste inspiration link';
+  const linkBtn=document.createElement('button');linkBtn.className='btn btn-sm';linkBtn.textContent='Add';
+  linkBtn.onclick=()=>{const href=link.value.trim();if(!href)return;moodboard.unshift({id:newMediaId(),kind:'link',href,createdAt:Date.now()});link.value='';saveMoodboard();renderMoodboard();};
+  row.appendChild(link);row.appendChild(linkBtn);body.appendChild(row);
+  const grid=document.createElement('div');grid.className='mood-grid';
+  moodboard.forEach(item=>{
+    const card=document.createElement('div');card.className='mood-item';card.draggable=true;
+    card.ondragstart=e=>{moodDragId=item.id;card.classList.add('dragging');e.dataTransfer.effectAllowed='copy';};
+    card.ondragend=()=>{moodDragId=null;card.classList.remove('dragging');document.querySelectorAll('.scene-card').forEach(c=>c.classList.remove('mood-drop-target'));};
+    if(item.kind==='note'){
+      const n=document.createElement('div');n.className='mood-card-note';n.textContent=item.text;card.appendChild(n);
+    }else if(item.kind==='link'){
+      const l=document.createElement('div');l.className='mood-card-link';l.textContent=item.href;card.appendChild(l);
+      card.onclick=()=>window.open(item.href,'_blank');
+    }else if(item.type==='video'){
+      const v=document.createElement('video');v.src=item.url;v.muted=true;v.preload='metadata';card.appendChild(v);card.onclick=()=>openLB([item],0,mediaLabel(item));
+    }else{
+      const img=document.createElement('img');img.src=item.url;img.alt='';card.appendChild(img);card.onclick=()=>openLB([item],0,mediaLabel(item));
+    }
+    const bar=document.createElement('div');bar.className='mood-item-bar';
+    const name=document.createElement('span');name.className='mood-item-name';name.textContent=mediaLabel(item);
+    const add=document.createElement('button');add.className='mood-mini-btn';add.textContent='Add';add.onclick=e=>{e.stopPropagation();addMoodToSelected(item.id);};
+    const del=document.createElement('button');del.className='mood-mini-btn';del.textContent='×';del.onclick=e=>{e.stopPropagation();deleteMoodItem(item.id);};
+    bar.appendChild(name);bar.appendChild(add);bar.appendChild(del);card.appendChild(bar);grid.appendChild(card);
+  });
+  body.appendChild(grid);
+}
+function addMoodFiles(files){
+  readLocalMediaFiles(files,results=>{
+    if(!results.length)return;
+    moodboard=[...results.map(r=>({...r,id:newMediaId(),createdAt:Date.now()})),...moodboard];
+    saveMoodboard();renderMoodboard();toast(results.length+' moodboard file(s) added');
+  });
+}
+function handleMoodFiles(e){
+  addMoodFiles(Array.from(e.target.files||[]));
+  e.target.value='';
+}
+
 // LIGHTBOX
 function openLB(media,idx,title){lbMedia=media;lbIdx=idx;document.getElementById('lightbox').classList.add('open');document.getElementById('lbCap').textContent=title;renderLB();document.addEventListener('keydown',lbKey);}
 function closeLB(){document.getElementById('lightbox').classList.remove('open');document.removeEventListener('keydown',lbKey);const w=document.getElementById('lbWrap');w.querySelectorAll('video').forEach(v=>v.pause());w.innerHTML='';}
@@ -3606,6 +3823,7 @@ if(boardIdFromHash())localStorage.setItem(LAST_SCREEN_KEY,'board');
 if(localStorage.getItem(LAST_SCREEN_KEY)!=='board')showStoryboardMenu();
 loadSharedBoards({silent:true});
 restoreStoredAudio();
+renderMoodboard();
 window.addEventListener('hashchange',()=>{if(openHashBoardIfPresent())hideStoryboardMenu();});
 </script>
 
@@ -3638,7 +3856,10 @@ async function readLocalMediaFiles(files,callback){
   const results=await Promise.all(valid.map(file=>new Promise(resolve=>{
     const rt=file.type.startsWith('video')?'video':'image';
     if(file.size>1800000||rt==='video'){
-      resolve({url:URL.createObjectURL(file),type:rt,name:file.name,transient:true});
+      const storedId=newMediaId();
+      setStoredMedia(storedId,{blob:file,type:file.type||'',name:file.name,size:file.size,updatedAt:Date.now()})
+        .then(()=>resolve({url:URL.createObjectURL(file),type:rt,name:file.name,storedId,size:file.size}))
+        .catch(()=>resolve({url:URL.createObjectURL(file),type:rt,name:file.name,transient:true}));
       return;
     }
     const reader=new FileReader();
@@ -3648,6 +3869,25 @@ async function readLocalMediaFiles(files,callback){
   })));
   callback(results.filter(Boolean));
 }
+async function restoreStoredBoardMedia(){
+  let changed=false;
+  const restoreItem=async item=>{
+    if(!item?.storedId||String(item.url||'').startsWith('blob:'))return;
+    const stored=await getStoredMedia(item.storedId).catch(()=>null);
+    if(stored?.blob instanceof Blob){
+      item.url=URL.createObjectURL(stored.blob);
+      item.type=item.type||((stored.type||'').startsWith('video')?'video':'image');
+      item.name=item.name||stored.name||'media';
+      changed=true;
+    }
+  };
+  for(const scene of scenes){
+    for(const item of (scene.media||[]))await restoreItem(item);
+  }
+  for(const item of moodboard)await restoreItem(item);
+  if(changed){render();renderMoodboard();}
+}
+restoreStoredBoardMedia();
 </script>
 </body>
 </html>

@@ -2550,10 +2550,10 @@ function makeCard(scene){
     else if(tc===null)iEditTime(scene.id,tb);
     else toast('Upload the audio track using the player at the top');
   };
-  const tb=document.createElement('div');tb.className='time-badge';tb.title='Click to play/pause this timecode';
+  const tb=document.createElement('div');tb.className='time-badge';tb.title='Click to edit. Option-click to play/pause this timecode.';
   tb.textContent=scene.time||'—';
   tb.onclick=e=>{
-    if(e.shiftKey){iEditTime(scene.id,tb);return;}
+    if(!e.altKey){iEditTime(scene.id,tb);return;}
     const tc=parseTimecode(scene.time);
     if(tc!==null&&globalAudio){
       const end=tc.end??globalAudio.duration;

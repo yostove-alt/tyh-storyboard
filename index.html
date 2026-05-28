@@ -2711,16 +2711,17 @@ function makeStoryRow(scene){
   lyrics.onclick=e=>{e.stopPropagation();iEditTA(scene.id,'lyrics',lyrics,'lyrics-ta');};
   main.appendChild(kicker);main.appendChild(title);main.appendChild(lyrics);row.appendChild(main);
   const meta=document.createElement('div');meta.className='story-meta';
-  const time=document.createElement('span');time.className='time-badge';time.title='Click to play/pause this timecode';time.textContent=scene.time||'--';
+  const time=document.createElement('span');time.className='time-badge';time.title='Click to play/pause. Double-click to edit.';time.textContent=scene.time||'--';
   time.onclick=e=>{
     e.stopPropagation();
     const tc=parseTimecode(scene.time);
     if(tc!==null&&globalAudio){
       const end=tc.end??globalAudio.duration;
       toggleSectionPlayback(scene.id,tc.start,end);
-    }else if(tc===null){toast('Add a timestamp to this scene first');}
+    }else if(tc===null){iEditTime(scene.id,time);}
     else{toast('Upload the audio track using the player at the top');}
   };
+  time.ondblclick=e=>{e.preventDefault();e.stopPropagation();iEditTime(scene.id,time);};
   const clock=document.createElement('span');clock.className='section-clock';clock.dataset.sceneId=String(scene.id);clock.textContent='0:00';
   const pills=document.createElement('div');pills.className='story-pills';
   const status=document.createElement('span');status.className='pill';const stColor=colorForOption(scene.status,'status');status.style.cssText=`border-color:${stColor}55;color:${stColor};background:${stColor}12;`;status.textContent=scene.status;

@@ -2754,9 +2754,10 @@ function renderSlideshowView(board){
   const controls=document.createElement('div');controls.className='slideshow-controls';
   const play=document.createElement('button');play.className='btn btn-primary btn-sm';play.id='slideshowPlayBtn';play.textContent=slideshowState.playing?'Pause':'Play';play.onclick=toggleSlideshowPlayback;
   const restart=document.createElement('button');restart.className='btn btn-sm';restart.textContent='Restart';restart.onclick=()=>{slideshowSeek(clips[0]?.start||0);if(slideshowState.playing)startSlideshowPlayback();};
+  const exportBtn=document.createElement('button');exportBtn.className='btn btn-sm';exportBtn.textContent='Export video';exportBtn.onclick=()=>exportAnimaticVideo(exportBtn);
   const time=document.createElement('span');time.className='slideshow-time';time.id='slideshowTime';time.textContent=fmtTime(slideshowState.time);
   const hint=document.createElement('span');hint.style.cssText='font-size:11px;color:var(--muted);';hint.textContent='Drag clip edges to adjust timing inside each card timestamp.';
-  controls.appendChild(play);controls.appendChild(restart);controls.appendChild(time);controls.appendChild(hint);wrap.appendChild(controls);
+  controls.appendChild(play);controls.appendChild(restart);controls.appendChild(exportBtn);controls.appendChild(time);controls.appendChild(hint);wrap.appendChild(controls);
   const timeline=document.createElement('div');timeline.className='slideshow-timeline';timeline.id='slideshowTimeline';
   const track=document.createElement('div');track.className='slideshow-track';track.id='slideshowTrack';
   const totalEnd=Math.max(10,...clips.map(c=>c.end));
@@ -2856,6 +2857,111 @@ function followSlideshowPlayhead(){
     timeline.scrollLeft=Math.max(0,x-margin);
   }else if(x>timeline.scrollLeft+timeline.clientWidth-margin){
     timeline.scrollLeft=x-timeline.clientWidth+margin;
+  }
+}
+function animaticRecorderType(){
+  const types=[
+    'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
+    'video/mp4',
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm'
+  ];
+  return types.find(type=>window.MediaRecorder&&MediaRecorder.isTypeSupported(type))||'';
+}
+function drawContain(ctx,img,x,y,w,h){
+  const iw=img.videoWidth||img.naturalWidth||img.width;
+  const ih=img.videoHeight||img.naturalHeight||img.height;
+  if(!iw||!ih)return;
+  const scale=Math.min(w/iw,h/ih);
+  const dw=iw*scale,dh=ih*scale;
+  ctx.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
+}
+function loadAnimaticImages(clips){
+  const cache=new Map();
+  return Promise.all(clips.map(clip=>new Promise(resolve=>{
+    if(cache.has(clip.media.url)){resolve(cache.get(clip.media.url));return;}
+    const img=new Image();
+    img.onload=()=>{cache.set(clip.media.url,img);resolve(img);};
+    img.onerror=()=>resolve(null);
+    img.src=clip.media.url;
+  }))).then(images=>{
+    const map=new Map();
+    clips.forEach((clip,i)=>{if(images[i])map.set(clip.key,images[i]);});
+    return map;
+  });
+}
+function downloadBlob(blob,name){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1200);
+}
+async function exportAnimaticVideo(button){
+  const clips=buildSlideshowClips();
+  if(!clips.length){toast('Add images and timestamps before exporting');return;}
+  if(!window.MediaRecorder){toast('This browser cannot record video exports');return;}
+  const mimeType=animaticRecorderType();
+  if(!mimeType){toast('This browser does not support video recording');return;}
+  const original=button?.textContent;
+  if(button){button.disabled=true;button.textContent='Exporting...';}
+  pauseSlideshowPlayback();
+  try{
+    const width=1280,height=720,fps=30;
+    const start=clips[0].start,end=Math.max(...clips.map(c=>c.end)),duration=Math.max(.5,end-start);
+    const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+    const ctx=canvas.getContext('2d');
+    const images=await loadAnimaticImages(clips);
+    const stream=canvas.captureStream(fps);
+    let audioEl=null,audioCtx=null;
+    if(globalAudio?.src){
+      try{
+        audioEl=new Audio(globalAudio.src);
+        audioEl.crossOrigin='anonymous';
+        audioEl.currentTime=start;
+        audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+        const source=audioCtx.createMediaElementSource(audioEl);
+        const dest=audioCtx.createMediaStreamDestination();
+        source.connect(dest);
+        dest.stream.getAudioTracks().forEach(track=>stream.addTrack(track));
+      }catch(e){}
+    }
+    const recorder=new MediaRecorder(stream,{mimeType});
+    const chunks=[];
+    recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
+    const done=new Promise(resolve=>{recorder.onstop=resolve;});
+    recorder.start(250);
+    const began=performance.now();
+    const draw=()=>{
+      const elapsed=(performance.now()-began)/1000;
+      const t=start+Math.min(duration,elapsed);
+      const clip=clipAtTime(clips,t);
+      ctx.fillStyle='#050706';ctx.fillRect(0,0,width,height);
+      const img=clip?images.get(clip.key):null;
+      if(img)drawContain(ctx,img,0,0,width,height);
+      if(clip){
+        ctx.fillStyle='rgba(5,7,6,.78)';ctx.fillRect(28,height-82,Math.min(760,width-56),54);
+        ctx.fillStyle='#fff';ctx.font='28px serif';ctx.fillText(clip.title,44,height-52);
+        ctx.fillStyle='#d8ded9';ctx.font='18px monospace';ctx.fillText(fmtTime(t)+' / '+fmtTime(end),44,height-25);
+      }
+      if(elapsed<duration)requestAnimationFrame(draw);
+      else setTimeout(()=>recorder.stop(),180);
+    };
+    if(audioEl){
+      try{await audioCtx.resume();await audioEl.play();}catch(e){}
+    }
+    draw();
+    await done;
+    if(audioEl)audioEl.pause();
+    if(audioCtx)audioCtx.close();
+    const blob=new Blob(chunks,{type:mimeType});
+    const isMp4=mimeType.includes('mp4');
+    downloadBlob(blob,'animatic.'+(isMp4?'mp4':'webm'));
+    toast(isMp4?'MP4 exported':'Exported WebM because this browser does not support MP4 recording',4200);
+  }catch(e){
+    toast('Could not export video: '+(e.message||'unknown error'),5200);
+  }finally{
+    if(button){button.disabled=false;button.textContent=original||'Export video';}
   }
 }
 function slideshowSeek(time){

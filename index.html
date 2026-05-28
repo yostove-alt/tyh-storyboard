@@ -1432,6 +1432,17 @@ function cleanStorageName(name){
 function storagePublicUrl(path){
   return getSupabaseUrl()+'/storage/v1/object/public/'+encodeURIComponent(SUPABASE_STORAGE_BUCKET)+'/'+path.split('/').map(encodeURIComponent).join('/');
 }
+function dataUrlToFile(dataUrl,name='image.png'){
+  const parts=String(dataUrl||'').match(/^data:([^;,]+)?(;base64)?,(.*)$/);
+  if(!parts)return null;
+  const mime=parts[1]||'application/octet-stream';
+  const raw=parts[2]?atob(parts[3]):decodeURIComponent(parts[3]);
+  const bytes=new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+  const ext=(mime.split('/')[1]||'bin').replace(/[^a-z0-9]/gi,'')||'bin';
+  const fileName=/\.[a-z0-9]+$/i.test(name)?name:(name+'.'+ext);
+  return new File([bytes],fileName,{type:mime});
+}
 async function uploadFileToStorage(file,{mediaId=newMediaId(),boardId=activeStoryboardId}={}){
   if(!cloudConfigured()||!getCloudSession())return null;
   await refreshCloudSession();
@@ -1457,16 +1468,26 @@ async function uploadFileToStorage(file,{mediaId=newMediaId(),boardId=activeStor
   return {mediaId,storagePath:path,url:storagePublicUrl(path)};
 }
 async function uploadStoredMediaItem(item,boardId=activeStoryboardId){
-  if(!item?.storedId||isShareableMediaUrl(item.url))return false;
-  const stored=await getStoredMedia(item.storedId,boardId).catch(()=>null);
-  if(!stored?.blob)return false;
-  const file=new File([stored.blob],item.name||stored.name||'media',{type:stored.type||item.type||'application/octet-stream'});
-  const uploaded=await uploadFileToStorage(file,{mediaId:item.storedId,boardId});
+  if(!item||isShareableMediaUrl(item.url))return false;
+  let file=null;
+  let mediaId=item.storedId||newMediaId();
+  if(item.storedId){
+    const stored=await getStoredMedia(item.storedId,boardId).catch(()=>null);
+    if(stored?.blob){
+      file=new File([stored.blob],item.name||stored.name||'media',{type:stored.type||item.type||'application/octet-stream'});
+    }
+  }
+  if(!file&&String(item.url||'').startsWith('data:')){
+    file=dataUrlToFile(item.url,item.name||'image');
+  }
+  if(!file)return false;
+  const uploaded=await uploadFileToStorage(file,{mediaId,boardId});
   if(!uploaded)return false;
   item.url=uploaded.url;
   item.storagePath=uploaded.storagePath;
-  item.name=item.name||stored.name||file.name;
-  item.type=item.type||((stored.type||'').startsWith('video')?'video':'image');
+  item.name=item.name||file.name;
+  item.type=item.type||(file.type.startsWith('video')?'video':'image');
+  if(item.storedId)item.storedId=mediaId;
   return true;
 }
 async function syncLocalMediaToCloud(){

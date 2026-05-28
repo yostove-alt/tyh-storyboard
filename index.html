@@ -2550,10 +2550,9 @@ function makeCard(scene){
     else if(tc===null)iEditTime(scene.id,tb);
     else toast('Upload the audio track using the player at the top');
   };
-  const tb=document.createElement('div');tb.className='time-badge';tb.title='Click to edit. Option-click to play/pause this timecode.';
+  const tb=document.createElement('div');tb.className='time-badge';tb.title='Click to play/pause. Double-click to edit.';
   tb.textContent=scene.time||'—';
   tb.onclick=e=>{
-    if(!e.altKey){iEditTime(scene.id,tb);return;}
     const tc=parseTimecode(scene.time);
     if(tc!==null&&globalAudio){
       const end=tc.end??globalAudio.duration;
@@ -2561,6 +2560,7 @@ function makeCard(scene){
     } else if(tc===null){iEditTime(scene.id,tb);}
     else{toast('Upload the audio track using the player at the top');}
   };
+  tb.ondblclick=e=>{e.preventDefault();e.stopPropagation();iEditTime(scene.id,tb);};
   const clock=document.createElement('span');clock.className='section-clock';clock.dataset.sceneId=String(scene.id);clock.textContent='0:00';
   timeControls.appendChild(stopBtn);timeControls.appendChild(tb);timeControls.appendChild(clock);
   top.appendChild(meta);top.appendChild(timeControls);body.appendChild(top);

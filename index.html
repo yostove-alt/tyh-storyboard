@@ -194,10 +194,17 @@ body.panel-closed .panel-rail{left:0;}
 .board{flex:1;padding:24px 28px 88px;overflow-y:auto;min-width:0;}
 
 /* ── MOODBOARD ── */
-.mood-panel{width:310px;min-width:310px;background:var(--surface);border-left:1px solid var(--border);position:sticky;top:103px;height:calc(100vh - 103px);display:flex;flex-direction:column;box-shadow:-4px 0 20px rgba(38,48,32,.04);}
+.mood-panel{width:var(--mood-panel,310px);min-width:260px;max-width:620px;background:var(--surface);border-left:1px solid var(--border);position:sticky;top:103px;height:calc(100vh - 103px);display:flex;flex-direction:column;box-shadow:-4px 0 20px rgba(38,48,32,.04);}
+body.mood-closed .mood-panel{display:none;}
+.mood-resize{position:absolute;left:-4px;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:4;}
+.mood-resize:hover{background:rgba(42,92,63,.12);}
 .mood-hdr{padding:13px 14px;border-bottom:1px solid var(--border);background:var(--surface-soft);display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .mood-hdr h2{font-family:'DM Serif Display',serif;font-size:18px;line-height:1;}
 .mood-hdr span{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);}
+.mood-actions{display:flex;gap:5px;align-items:center;}
+.mood-rail{position:fixed;right:var(--mood-panel,310px);top:50%;transform:translateY(-50%);z-index:210;background:var(--accent);color:#fff;border:1px solid var(--accent);border-right:none;border-radius:8px 0 0 8px;padding:10px 7px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;writing-mode:vertical-rl;text-orientation:mixed;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.16);transition:right .25s;}
+.mood-rail:hover{background:#0F3828;}
+body.mood-closed .mood-rail{right:0;}
 .mood-body{padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;scrollbar-gutter:stable;}
 .mood-body::-webkit-scrollbar{width:6px;}
 .mood-body::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:999px;}
@@ -206,6 +213,9 @@ body.panel-closed .panel-rail{left:0;}
 .mood-note-input{min-height:64px;}
 .mood-row{display:flex;gap:6px;align-items:center;}
 .mood-link-input{resize:none;min-height:0;}
+.mood-section{display:flex;flex-direction:column;gap:8px;}
+.mood-section-h{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);display:flex;align-items:center;gap:8px;margin-top:2px;}
+.mood-section-h:after{content:'';height:1px;background:var(--border);flex:1;}
 .mood-drop{border:1.5px dashed var(--border-strong);border-radius:var(--r);background:var(--bg);padding:14px 10px;text-align:center;color:var(--muted);font-size:12px;cursor:pointer;transition:all .15s;}
 .mood-drop:hover,.mood-drop.dov{border-color:var(--accent);background:var(--accent-l);color:var(--accent);}
 .mood-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
@@ -213,7 +223,11 @@ body.panel-closed .panel-rail{left:0;}
 .mood-item.dragging{opacity:.45;}
 .mood-item img,.mood-item video{width:100%;aspect-ratio:16/10;object-fit:cover;background:#050706;display:block;}
 .mood-card-note,.mood-card-link{padding:8px;font-size:12px;line-height:1.35;color:var(--text);word-break:break-word;min-height:62px;}
-.mood-card-link{font-family:'DM Mono',monospace;font-size:10px;color:var(--accent);}
+.mood-card-link{min-height:92px;display:flex;flex-direction:column;gap:6px;background:linear-gradient(180deg,var(--surface-soft),var(--surface));}
+.link-preview-top{display:flex;gap:8px;align-items:center;}
+.link-preview-top img{width:24px!important;height:24px!important;aspect-ratio:1!important;border-radius:5px;border:1px solid var(--border);background:var(--surface);object-fit:contain!important;}
+.link-domain{font-family:'DM Mono',monospace;font-size:10px;color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.link-url{font-size:11px;color:var(--muted);line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .mood-item-bar{display:flex;gap:4px;align-items:center;justify-content:space-between;border-top:1px solid var(--border);padding:5px;background:var(--surface);}
 .mood-item-name{font-size:10px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
 .mood-mini-btn{border:1px solid var(--border);background:var(--surface-soft);border-radius:5px;color:var(--muted);font-size:10px;padding:3px 5px;cursor:pointer;flex-shrink:0;}
@@ -484,6 +498,8 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
   .panel-body{max-height:none;overflow:visible;}
   .board{padding:16px 14px 72px;}
   .mood-panel{position:relative;top:auto;width:100%;min-width:0;height:auto;border-left:0;border-top:1px solid var(--border);}
+  .mood-resize{display:none;}
+  .mood-rail,body.mood-closed .mood-rail{top:auto;right:14px;bottom:14px;transform:none;writing-mode:horizontal-tb;border-radius:999px;border:1px solid var(--accent);padding:9px 13px;}
   .mood-grid{grid-template-columns:repeat(3,minmax(0,1fr));}
   :root{--card-w:calc(100vw - 28px);--card-h:640px;}
   .scene-grid{display:flex;}
@@ -498,7 +514,7 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
 }
 
 @media print{
-  .hdr,.toolbar,.write-panel,.mood-panel,.card-footer,.drag-hdl,.sw-overlay,.sw-prev,.sw-next,.sw-dots,.sw-cnt,.thumb-strip,.add-scene-card,.add-act-row,.toast,.lightbox{display:none!important;}
+  .hdr,.toolbar,.write-panel,.mood-panel,.panel-rail,.mood-rail,.card-footer,.drag-hdl,.sw-overlay,.sw-prev,.sw-next,.sw-dots,.sw-cnt,.thumb-strip,.add-scene-card,.add-act-row,.toast,.lightbox{display:none!important;}
   .layout{display:block;}.board{padding:0;}
   .scene-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
   .scene-card{height:auto;min-height:0;border:1px solid #ccc;break-inside:avoid;}
@@ -622,18 +638,23 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
   </div>
   <div class="board" id="board"></div>
   <aside class="mood-panel" id="moodPanel">
+    <div class="mood-resize" onmousedown="startMoodResize(event)"></div>
     <div class="mood-hdr">
       <div>
         <h2>Moodboard</h2>
         <span>Loose ideas</span>
       </div>
-      <button class="btn btn-sm" onclick="document.getElementById('moodFileInput').click()">Upload</button>
+      <div class="mood-actions">
+        <button class="btn btn-sm" onclick="document.getElementById('moodFileInput').click()">Upload</button>
+        <button class="btn btn-sm btn-ghost" onclick="toggleMoodPanel()">✕</button>
+      </div>
     </div>
     <div class="mood-body" id="moodBody"></div>
   </aside>
 </div>
 
 <button class="panel-rail" id="panelRail" onclick="togglePanel()">Hide panel</button>
+<button class="mood-rail" id="moodRail" onclick="toggleMoodPanel()">Hide moodboard</button>
 
 <div class="lightbox" id="lightbox">
   <button class="lb-close" onclick="closeLB()">&#215;</button>
@@ -689,6 +710,8 @@ const FIELD_DEFAULTS=[
 const STORYBOARD_INDEX_KEY='jdb_storyboards_index';
 const ACTIVE_STORYBOARD_KEY='jdb_active_storyboard';
 const LAST_SCREEN_KEY='jdb_last_screen';
+const MOOD_PANEL_OPEN_KEY='jdb_mood_panel_open';
+const MOOD_PANEL_WIDTH_KEY='jdb_mood_panel_width';
 const LEGACY_BOARD_KEYS=['jdb_v4','jdb_field_settings','jdb_acts','jdb_locations','jdb_statuses','jdb_cameras','jdb_viewer_ratio','jdb_card_height','jdb_song_info','jdb_audio_name','jdb_slideshow_overrides','jdb_video_overview','jdb_moodboard'];
 const DEFAULT_SUPABASE_URL='';
 const DEFAULT_SUPABASE_ANON_KEY='';
@@ -913,6 +936,8 @@ let cameras=loadOptionList('jdb_cameras',DEFAULT_CAMS);
 let viewerRatio=loadViewerRatio();
 let cardHeight=loadCardHeight();
 let panelOpen=true;
+let moodPanelOpen=localStorage.getItem(MOOD_PANEL_OPEN_KEY)!=='false';
+let moodPanelWidth=parseInt(localStorage.getItem(MOOD_PANEL_WIDTH_KEY)||'310',10);
 let activeTab='agent';
 let boardView='cards';
 let sortField='scene';let sortDir=1;
@@ -1621,6 +1646,26 @@ function setPanel(open){
   document.getElementById('panelRail').textContent=panelOpen?'Hide panel':'Open panel';
 }
 function togglePanel(){setPanel(!panelOpen);}
+function setMoodPanel(open){
+  moodPanelOpen=open;
+  localStorage.setItem(MOOD_PANEL_OPEN_KEY,String(open));
+  document.body.classList.toggle('mood-closed',!moodPanelOpen);
+  document.getElementById('moodRail').textContent=moodPanelOpen?'Hide moodboard':'Open moodboard';
+}
+function setMoodPanelWidth(width){
+  moodPanelWidth=Math.max(260,Math.min(620,Math.round(width)||310));
+  localStorage.setItem(MOOD_PANEL_WIDTH_KEY,String(moodPanelWidth));
+  document.documentElement.style.setProperty('--mood-panel',moodPanelWidth+'px');
+}
+function toggleMoodPanel(){setMoodPanel(!moodPanelOpen);}
+function startMoodResize(e){
+  e.preventDefault();
+  const startX=e.clientX,startWidth=moodPanelWidth;
+  const move=ev=>setMoodPanelWidth(startWidth+(startX-ev.clientX));
+  const up=()=>{window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);};
+  window.addEventListener('mousemove',move);
+  window.addEventListener('mouseup',up);
+}
 function openPanel(tab='chat'){if(!panelOpen)setPanel(true);switchTab(tab);}
 function switchTab(t){
   if(t==='chat'||t==='claude')t='agent';
@@ -3629,6 +3674,22 @@ function saveVideoOverview(value){
   touchStoryboard();
 }
 function mediaLabel(item){return item.name||item.url||item.text||item.href||'Idea';}
+function normalizeUrl(value){
+  if(!value)return '';
+  return /^https?:\/\//i.test(value)?value:'https://'+value;
+}
+function domainLabel(url){
+  try{return new URL(url).hostname.replace(/^www\./,'');}catch(e){return url;}
+}
+function escapeHtml(value){
+  return String(value||'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+function faviconUrl(url){
+  try{
+    const u=new URL(url);
+    return 'https://www.google.com/s2/favicons?domain='+encodeURIComponent(u.hostname)+'&sz=64';
+  }catch(e){return '';}
+}
 function moodItemById(id){return moodboard.find(item=>item.id===id);}
 function makeMoodMediaCopy(item){
   return {type:item.type||'image',name:item.name||'',url:item.url||'',storedId:item.storedId||'',storagePath:item.storagePath||'',size:item.size||0};
@@ -3659,33 +3720,50 @@ function renderMoodboard(){
   const body=document.getElementById('moodBody');
   if(!body)return;
   body.innerHTML='';
+  const mediaItems=moodboard.filter(item=>item&&!item.kind);
+  const noteItems=moodboard.filter(item=>item?.kind==='note');
+  const linkItems=moodboard.filter(item=>item?.kind==='link');
+  const section=(title,children=[])=>{
+    const sec=document.createElement('div');sec.className='mood-section';
+    const h=document.createElement('div');h.className='mood-section-h';h.textContent=title;sec.appendChild(h);
+    children.forEach(child=>sec.appendChild(child));
+    body.appendChild(sec);
+    return sec;
+  };
   const overview=document.createElement('textarea');overview.className='mood-overview';overview.placeholder='General paragraph about the video...';overview.value=videoOverview;
   overview.oninput=()=>saveVideoOverview(overview.value);
-  body.appendChild(overview);
+  section('Overview',[overview]);
   const drop=document.createElement('div');drop.className='mood-drop';drop.textContent='Drop or upload random images and videos';
   drop.onclick=()=>document.getElementById('moodFileInput').click();
   drop.ondragover=e=>{e.preventDefault();drop.classList.add('dov');};
   drop.ondragleave=()=>drop.classList.remove('dov');
   drop.ondrop=e=>{e.preventDefault();drop.classList.remove('dov');addMoodFiles(Array.from(e.dataTransfer.files||[]));};
-  body.appendChild(drop);
+  const mediaGrid=document.createElement('div');mediaGrid.className='mood-grid';
+  section('Images & videos',[drop,mediaGrid]);
   const note=document.createElement('textarea');note.className='mood-note-input';note.placeholder='Add a loose note...';
   const noteBtn=document.createElement('button');noteBtn.className='btn btn-sm';noteBtn.textContent='Add note';
   noteBtn.onclick=()=>{const text=note.value.trim();if(!text)return;moodboard.unshift({id:newMediaId(),kind:'note',text,createdAt:Date.now()});note.value='';saveMoodboard();renderMoodboard();};
-  body.appendChild(note);body.appendChild(noteBtn);
+  const noteGrid=document.createElement('div');noteGrid.className='mood-grid';
+  section('Notes',[note,noteBtn,noteGrid]);
   const row=document.createElement('div');row.className='mood-row';
   const link=document.createElement('input');link.className='mood-link-input';link.placeholder='Paste inspiration link';
   const linkBtn=document.createElement('button');linkBtn.className='btn btn-sm';linkBtn.textContent='Add';
-  linkBtn.onclick=()=>{const href=link.value.trim();if(!href)return;moodboard.unshift({id:newMediaId(),kind:'link',href,createdAt:Date.now()});link.value='';saveMoodboard();renderMoodboard();};
-  row.appendChild(link);row.appendChild(linkBtn);body.appendChild(row);
-  const grid=document.createElement('div');grid.className='mood-grid';
-  moodboard.forEach(item=>{
+  linkBtn.onclick=()=>{const href=normalizeUrl(link.value.trim());if(!href)return;moodboard.unshift({id:newMediaId(),kind:'link',href,createdAt:Date.now()});link.value='';saveMoodboard();renderMoodboard();};
+  row.appendChild(link);row.appendChild(linkBtn);
+  const linkGrid=document.createElement('div');linkGrid.className='mood-grid';
+  section('Links',[row,linkGrid]);
+  const renderItems=(items,grid)=>{
+    items.forEach(item=>{
     const card=document.createElement('div');card.className='mood-item';card.draggable=true;
     card.ondragstart=e=>{moodDragId=item.id;card.classList.add('dragging');e.dataTransfer.effectAllowed='copy';};
     card.ondragend=()=>{moodDragId=null;card.classList.remove('dragging');document.querySelectorAll('.scene-card').forEach(c=>c.classList.remove('mood-drop-target'));};
     if(item.kind==='note'){
       const n=document.createElement('div');n.className='mood-card-note';n.textContent=item.text;card.appendChild(n);
     }else if(item.kind==='link'){
-      const l=document.createElement('div');l.className='mood-card-link';l.textContent=item.href;card.appendChild(l);
+      card.draggable=false;
+      const l=document.createElement('div');l.className='mood-card-link';
+      l.innerHTML='<div class="link-preview-top"><img src="'+escapeHtml(faviconUrl(item.href))+'" alt=""><span class="link-domain">'+escapeHtml(domainLabel(item.href))+'</span></div><div class="link-url">'+escapeHtml(item.href)+'</div>';
+      card.appendChild(l);
       card.onclick=()=>window.open(item.href,'_blank');
     }else if(item.type==='video'){
       const v=document.createElement('video');v.src=item.url;v.muted=true;v.preload='metadata';card.appendChild(v);card.onclick=()=>openLB([item],0,mediaLabel(item));
@@ -3697,8 +3775,11 @@ function renderMoodboard(){
     const add=document.createElement('button');add.className='mood-mini-btn';add.textContent='Add';add.onclick=e=>{e.stopPropagation();addMoodToSelected(item.id);};
     const del=document.createElement('button');del.className='mood-mini-btn';del.textContent='×';del.onclick=e=>{e.stopPropagation();deleteMoodItem(item.id);};
     bar.appendChild(name);bar.appendChild(add);bar.appendChild(del);card.appendChild(bar);grid.appendChild(card);
-  });
-  body.appendChild(grid);
+    });
+  };
+  renderItems(mediaItems,mediaGrid);
+  renderItems(noteItems,noteGrid);
+  renderItems(linkItems,linkGrid);
 }
 function addMoodFiles(files){
   readLocalMediaFiles(files,results=>{
@@ -3910,6 +3991,8 @@ function handleImport(e){const f=e.target.files[0];if(!f)return;const r=new File
 
 render();
 setPanel(panelOpen);
+setMoodPanelWidth(moodPanelWidth);
+setMoodPanel(moodPanelOpen);
 boardRemove('jdb_audio_url');
 updateProjectName();
 updateCloudStatus();

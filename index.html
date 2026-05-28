@@ -2084,7 +2084,7 @@ async function runOpenAIAgent(text,key){
       body:JSON.stringify({
         model:getOpenAIModel(),
         instructions:boardAgentInstructions(),
-        input:JSON.stringify(boardAgentContext(text)),
+        input:'Return valid json only for this storyboard request:\n'+JSON.stringify(boardAgentContext(text)),
         max_output_tokens:4000,
         text:{format:{type:'json_object'}}
       })

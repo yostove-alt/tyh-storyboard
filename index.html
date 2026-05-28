@@ -211,7 +211,8 @@ body.panel-closed .panel-rail{left:0;}
 .story-stat strong{font-family:'DM Serif Display',serif;font-size:24px;line-height:1;color:var(--text);}
 .story-stat span{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);}
 .story-act{background:transparent;}
-.story-list{display:flex;flex-direction:column;gap:8px;}
+.story-act.drag-over .story-list{outline:2px dashed var(--accent);outline-offset:4px;border-radius:var(--r);}
+.story-list{display:flex;flex-direction:column;gap:8px;min-height:18px;}
 .story-row{display:grid;grid-template-columns:auto 86px minmax(0,1fr) auto;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:9px 12px;box-shadow:0 5px 18px rgba(38,48,32,.05);transition:border-color .15s,background .15s,box-shadow .15s;}
 .story-row:hover{border-color:var(--border-strong);box-shadow:0 8px 24px rgba(38,48,32,.09);}
 .story-row.hidden{display:none;}
@@ -232,6 +233,7 @@ body.panel-closed .panel-rail{left:0;}
 .story-meta{display:flex;flex-direction:column;gap:5px;align-items:flex-end;min-width:150px;}
 .story-meta .time-badge{cursor:default;}
 .story-pills{display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap;}
+.story-actions{display:flex;gap:5px;justify-content:flex-end;}
 
 .add-scene-card{width:46px;height:46px;border:1.5px dashed var(--border-strong);border-radius:999px;background:var(--surface);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:'Instrument Sans',sans-serif;transition:all .15s;flex:0 0 46px;align-self:center;box-shadow:0 6px 18px rgba(38,48,32,.05);}
 .add-scene-card svg{width:20px;height:20px;}
@@ -378,8 +380,9 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
 
 /* CARD FOOTER */
 .card-footer{padding:7px 12px;border-top:1px solid var(--border);display:flex;gap:5px;align-items:center;justify-content:flex-end;background:var(--bg);flex-shrink:0;}
-.card-edit-btn,.card-del-btn{font-size:11px;color:var(--faint);background:none;border:1px solid transparent;border-radius:4px;padding:3px 7px;cursor:pointer;font-family:'Instrument Sans',sans-serif;}
+.card-edit-btn,.card-dup-btn,.card-del-btn{font-size:11px;color:var(--faint);background:none;border:1px solid transparent;border-radius:4px;padding:3px 7px;cursor:pointer;font-family:'Instrument Sans',sans-serif;}
 .card-edit-btn:hover{border-color:var(--border);color:var(--accent);background:var(--accent-l);}
+.card-dup-btn:hover{border-color:var(--border);color:var(--accent);background:var(--accent-l);}
 .card-del-btn:hover{color:var(--danger);border-color:#E8C0B0;background:var(--danger-l);}
 
 /* LIGHTBOX */
@@ -1844,8 +1847,33 @@ function bulkCreateScenes(cards,{act=null,replace=false}={}){
   syncOptionsFromScenes();save();render();
   return 'Created '+plural(newScenes.length,'card')+' in '+actName+'.';
 }
+function nextSceneId(){return Math.max(...scenes.map(s=>s.id),0)+1;}
+function cloneSceneForDuplicate(scene){
+  const clone=JSON.parse(JSON.stringify(scene));
+  clone.id=nextSceneId();
+  clone.title=(scene.title||'Untitled scene')+' copy';
+  return clone;
+}
+function duplicateScene(id){
+  const idx=scenes.findIndex(scene=>scene.id===id);
+  if(idx<0)return null;
+  const clone=cloneSceneForDuplicate(scenes[idx]);
+  scenes.splice(idx+1,0,clone);
+  save();render();
+  toast('Scene duplicated');
+  return clone;
+}
+function deleteSceneById(id){
+  const scene=scenes.find(item=>item.id===id);
+  if(!scene)return;
+  if(confirm('Delete "'+scene.title+'"?')){
+    scenes=scenes.filter(item=>item.id!==id);
+    selectedSceneIds.delete(id);
+    save();render();
+  }
+}
 function createScene(act,overrides={}){
-  const id=Math.max(...scenes.map(s=>s.id),0)+1;
+  const id=nextSceneId();
   const actName=overrides.act||act||activeFilters.act||acts[0]||'New act';
   addOption('act',actName);
   const actScenes=scenes.filter(scene=>scene.act===actName);
@@ -2595,7 +2623,6 @@ function renderStoryView(board){
   wrap.appendChild(makeStoryOverview());
   acts.forEach(act=>{
     const actScenes=scenes.filter(scene=>scene.act===act);
-    if(!actScenes.length)return;
     const block=document.createElement('div');block.className='act-block story-act';block.dataset.act=act;
     const hdr=document.createElement('div');hdr.className='act-hdr';
     const color=getGroupColor(act,'act');
@@ -2604,6 +2631,19 @@ function renderStoryView(board){
     const count=document.createElement('span');count.style.cssText='margin-left:auto;font-size:10px;color:var(--faint);';count.textContent=actScenes.length+' scene'+(actScenes.length!==1?'s':'');
     hdr.appendChild(dot);hdr.appendChild(name);hdr.appendChild(count);block.appendChild(hdr);
     const list=document.createElement('div');list.className='story-list';
+    list.addEventListener('dragover',e=>{if(storyDragId){e.preventDefault();block.classList.add('drag-over');}});
+    list.addEventListener('dragleave',e=>{if(!list.contains(e.relatedTarget))block.classList.remove('drag-over');});
+    list.addEventListener('drop',e=>{
+      e.preventDefault();e.stopPropagation();block.classList.remove('drag-over');
+      if(!storyDragId)return;
+      const fi=scenes.findIndex(s=>s.id===storyDragId);
+      if(fi<0)return;
+      const moved=scenes.splice(fi,1)[0];
+      moved.act=act;
+      const last=[...scenes].map((s,i)=>s.act===act?i:-1).filter(i=>i>=0).pop();
+      scenes.splice(last===undefined?scenes.length:last+1,0,moved);
+      save();render();toast('Scene moved to '+act);
+    });
     actScenes.forEach(scene=>list.appendChild(makeStoryRow(scene)));
     block.appendChild(list);wrap.appendChild(block);
   });
@@ -2636,11 +2676,13 @@ function makeStoryRow(scene){
   row.addEventListener('dragover',e=>{e.preventDefault();if(storyDragId&&storyDragId!==scene.id)row.classList.add('drag-over');});
   row.addEventListener('dragleave',()=>row.classList.remove('drag-over'));
   row.addEventListener('drop',e=>{
-    e.preventDefault();row.classList.remove('drag-over');
+    e.preventDefault();e.stopPropagation();row.classList.remove('drag-over');
     if(!storyDragId||storyDragId===scene.id)return;
     const fi=scenes.findIndex(s=>s.id===storyDragId);
-    const ti=scenes.findIndex(s=>s.id===scene.id);
+    if(fi<0)return;
     const moved=scenes.splice(fi,1)[0];
+    moved.act=scene.act;
+    const ti=scenes.findIndex(s=>s.id===scene.id);
     scenes.splice(ti,0,moved);save();render();toast('Scene moved');
   });
   const left=document.createElement('div');left.className='story-left';
@@ -2660,6 +2702,10 @@ function makeStoryRow(scene){
   const status=document.createElement('span');status.className='pill';const stColor=colorForOption(scene.status,'status');status.style.cssText=`border-color:${stColor}55;color:${stColor};background:${stColor}12;`;status.textContent=scene.status;
   const camera=document.createElement('span');camera.className='pill';camera.textContent=(scene.camera||[]).join(', ')||'No camera';
   pills.appendChild(status);pills.appendChild(camera);meta.appendChild(time);meta.appendChild(pills);row.appendChild(meta);
+  const actions=document.createElement('div');actions.className='story-actions';
+  const dup=document.createElement('button');dup.className='card-dup-btn';dup.textContent='Duplicate';dup.onclick=e=>{e.stopPropagation();duplicateScene(scene.id);};
+  const del=document.createElement('button');del.className='card-del-btn';del.textContent='Delete';del.onclick=e=>{e.stopPropagation();deleteSceneById(scene.id);};
+  actions.appendChild(dup);actions.appendChild(del);meta.appendChild(actions);
   return row;
 }
 function makeStoryThumb(scene){
@@ -2910,8 +2956,9 @@ function makeCard(scene){
 
   // FOOTER
   const footer=document.createElement('div');footer.className='card-footer';
-  const delBtn=document.createElement('button');delBtn.className='card-del-btn';delBtn.textContent='Delete';delBtn.onclick=()=>{if(confirm('Delete "'+scene.title+'"?')){scenes=scenes.filter(s=>s.id!==scene.id);save();render();}};
-  footer.appendChild(delBtn);card.appendChild(footer);
+  const dupBtn=document.createElement('button');dupBtn.className='card-dup-btn';dupBtn.textContent='Duplicate';dupBtn.onclick=()=>duplicateScene(scene.id);
+  const delBtn=document.createElement('button');delBtn.className='card-del-btn';delBtn.textContent='Delete';delBtn.onclick=()=>deleteSceneById(scene.id);
+  footer.appendChild(dupBtn);footer.appendChild(delBtn);card.appendChild(footer);
   return card;
 }
 

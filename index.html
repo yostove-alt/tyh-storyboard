@@ -1207,6 +1207,28 @@ function setCloudSession(session){
   else localStorage.removeItem(SUPABASE_SESSION_KEY);
   updateCloudStatus();
 }
+async function refreshCloudSession(){
+  const session=getCloudSession();
+  if(!session?.refresh_token||!cloudConfigured())return false;
+  try{
+    const response=await fetch(getSupabaseUrl()+'/auth/v1/token?grant_type=refresh_token',{
+      method:'POST',
+      headers:{apikey:getSupabaseAnonKey(),'Content-Type':'application/json'},
+      body:JSON.stringify({refresh_token:session.refresh_token})
+    });
+    if(!response.ok)throw new Error('Session refresh failed');
+    const next=await response.json();
+    setCloudSession({
+      access_token:next.access_token,
+      refresh_token:next.refresh_token||session.refresh_token,
+      email:session.email
+    });
+    return true;
+  }catch(e){
+    setCloudSession(null);
+    return false;
+  }
+}
 function cloudHeaders(auth=false){
   const session=getCloudSession();
   return {
@@ -1271,10 +1293,12 @@ async function loadSharedBoardsFromSupabase({silent=false,force=false}={}){
 async function saveSharedBoardsToCloud(button){
   if(!cloudConfigured()){configureCloud();if(!cloudConfigured())return;}
   if(!getCloudSession()){await signInCloud();if(!getCloudSession())return;}
+  await refreshCloudSession();
+  if(!getCloudSession()){await signInCloud();if(!getCloudSession())return;}
   const snapshot=await collectSharedSnapshot();
   button.disabled=true;button.textContent='Saving shared...';
   try{
-    const response=await fetch(getSupabaseUrl()+'/rest/v1/'+SUPABASE_TABLE,{
+    let response=await fetch(getSupabaseUrl()+'/rest/v1/'+SUPABASE_TABLE,{
       method:'POST',
       headers:{...cloudHeaders(true),Prefer:'resolution=merge-duplicates,return=minimal'},
       body:JSON.stringify({
@@ -1286,7 +1310,27 @@ async function saveSharedBoardsToCloud(button){
     if(!response.ok){
       let detail='';
       try{const err=await response.json();detail=err.message||err.details||'';}catch(e){}
+      if(response.status===401||/jwt expired/i.test(detail)){
+        const refreshed=await refreshCloudSession();
+        if(refreshed){
+          response=await fetch(getSupabaseUrl()+'/rest/v1/'+SUPABASE_TABLE,{
+            method:'POST',
+            headers:{...cloudHeaders(true),Prefer:'resolution=merge-duplicates,return=minimal'},
+            body:JSON.stringify({
+              id:SUPABASE_ROW_ID,
+              data:snapshot,
+              updated_at:new Date(snapshot.updatedAt).toISOString()
+            })
+          });
+          if(response.ok)detail='';
+          else{try{const err=await response.json();detail=err.message||err.details||'';}catch(e){}}
+        }else{
+          throw new Error('Session expired. Please sign in again, then save shared.');
+        }
+      }
+      if(!response.ok){
       throw new Error(detail||('Shared save failed '+response.status));
+      }
     }
     localStorage.setItem(CLOUD_LOADED_KEY,String(snapshot.updatedAt));
     toast('Saved shared boards');

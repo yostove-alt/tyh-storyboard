@@ -242,8 +242,8 @@ body.panel-closed .panel-rail{left:0;}
 .story-actions{display:flex;gap:5px;justify-content:flex-end;}
 
 .slideshow-wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:12px;}
-.slideshow-stage{background:#101614;border:1px solid #25312d;border-radius:var(--r);min-height:420px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;box-shadow:var(--shadow);}
-.slideshow-stage img,.slideshow-stage video{max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain;display:block;}
+.slideshow-stage{background:#050706;border:1px solid #25312d;border-radius:var(--r);aspect-ratio:16/9;width:100%;max-height:min(68vh,660px);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;box-shadow:var(--shadow);}
+.slideshow-stage img,.slideshow-stage video{width:100%;height:100%;object-fit:contain;display:block;background:#050706;}
 .slideshow-empty{color:#a9b5ae;font-size:13px;text-align:center;max-width:420px;line-height:1.5;padding:30px;}
 .slideshow-caption{position:absolute;left:14px;bottom:14px;background:rgba(16,22,20,.82);color:#eef4ef;border:1px solid rgba(255,255,255,.14);border-radius:var(--rs);padding:7px 10px;font-size:12px;max-width:min(520px,80%);}
 .slideshow-caption strong{display:block;font-family:'DM Serif Display',serif;font-size:17px;line-height:1.1;color:#fff;}
@@ -554,7 +554,7 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
   <div class="sort-group view-group">
     <button class="sort-btn active" id="viewCardsBtn" onclick="setBoardView('cards')">Cards</button>
     <button class="sort-btn" id="viewStoryBtn" onclick="setBoardView('story')">Story</button>
-    <button class="sort-btn" id="viewSlideshowBtn" onclick="setBoardView('slideshow')">Slideshow</button>
+    <button class="sort-btn" id="viewSlideshowBtn" onclick="setBoardView('slideshow')">Animatic</button>
   </div>
   <div class="divider"></div>
   <span class="toolbar-label">Group by</span>
@@ -2812,7 +2812,7 @@ function updateSlideshowPreview(){
   if(stage){
     stage.innerHTML='';
     if(!clip){
-      const empty=document.createElement('div');empty.className='slideshow-empty';empty.textContent='Add images to cards with timestamps to build a slideshow timeline.';
+      const empty=document.createElement('div');empty.className='slideshow-empty';empty.textContent='Add images to cards with timestamps to build an animatic timeline.';
       stage.appendChild(empty);
     }else{
       const img=document.createElement('img');img.src=clip.media.url;img.alt='';stage.appendChild(img);

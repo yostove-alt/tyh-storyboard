@@ -1838,6 +1838,89 @@ function chatCopyField(fieldRaw,sourceRaw,scopeRaw){
   syncOptionsFromScenes();save();render();
   return 'Copied '+labelForField(field)+' from Scene '+source.num+' to '+plural(targets.length,'card')+'.';
 }
+function chatSetFields(scopeRaw,fields,mode='set'){
+  const targets=scenesForScope(scopeRaw||'all');
+  if(!targets.length)return 'I could not find matching cards for that scope.';
+  const entries=Object.entries(fields||{});
+  if(!entries.length)return 'No fields were provided.';
+  entries.forEach(([fieldRaw,value])=>{
+    const field=resolveChatField(fieldRaw,true);
+    if(field)targets.forEach(scene=>setSceneField(scene,field,value,mode));
+  });
+  syncOptionsFromScenes();save();render();
+  return 'Updated '+entries.length+' field'+(entries.length===1?'':'s')+' on '+plural(targets.length,'card')+'.';
+}
+function chatAddShots(scopeRaw,shots){
+  const vals=Array.isArray(shots)?shots:splitChatList(shots);
+  if(!vals.length)return 'No shot ideas were provided.';
+  return chatSetField('shots',scopeRaw||'all',vals,'append');
+}
+function chatDeleteScenes(scopeRaw){
+  const targets=scenesForScope(scopeRaw||'selected');
+  if(!targets.length)return 'I could not find cards to delete.';
+  const ids=new Set(targets.map(scene=>scene.id));
+  scenes=scenes.filter(scene=>!ids.has(scene.id));
+  selectedSceneIds=new Set([...selectedSceneIds].filter(id=>!ids.has(id)));
+  save();render();
+  return 'Deleted '+plural(ids.size,'card')+'.';
+}
+function chatClearField(fieldRaw,scopeRaw){
+  return chatSetField(fieldRaw,scopeRaw||'all','','set');
+}
+function removeTextOnce(value,needle){
+  const n=String(needle||'');
+  if(!n)return value;
+  return String(value||'').replace(new RegExp(n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'),'').replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+}
+function chatRemoveText(textRaw,{fieldRaw='',scopeRaw='all'}={}){
+  const needle=cleanChatValue(textRaw);
+  const targets=scenesForScope(scopeRaw||'all');
+  if(!needle)return 'No text was provided to remove.';
+  if(!targets.length)return 'I could not find matching cards for that scope.';
+  const fields=fieldRaw&&normChat(fieldRaw)!=='all'
+    ? [resolveChatField(fieldRaw,false)].filter(Boolean)
+    : [
+        {key:'title',label:'Title'},
+        {key:'time',label:'Timecode'},
+        {key:'lyrics',label:'Lyrics'},
+        {key:'note',label:"Director's note"},
+        ...fieldSettings
+      ];
+  targets.forEach(scene=>{
+    fields.forEach(field=>{
+      if(field.key==='shots')scene.shots=(scene.shots||[]).map(shot=>removeTextOnce(shot,needle)).filter(Boolean);
+      else if(field.key==='camera')scene.camera=(scene.camera||[]).filter(cam=>!normChat(cam).includes(normChat(needle)));
+      else if(scene[field.key]!==undefined)scene[field.key]=removeTextOnce(scene[field.key],needle);
+    });
+  });
+  save();render();
+  return 'Removed that text from '+plural(targets.length,'card')+'.';
+}
+function chatMoveScenes(scopeRaw,{act=null,after=null,before=null}={}){
+  const targets=scenesForScope(scopeRaw||'selected');
+  if(!targets.length)return 'I could not find cards to move.';
+  const movingIds=new Set(targets.map(scene=>scene.id));
+  const moving=scenes.filter(scene=>movingIds.has(scene.id));
+  scenes=scenes.filter(scene=>!movingIds.has(scene.id));
+  if(act){
+    addOption('act',act);
+    moving.forEach(scene=>{scene.act=act;});
+  }
+  let idx=scenes.length;
+  if(after){
+    const target=findSceneByToken(after);
+    if(target){const found=scenes.findIndex(scene=>scene.id===target.id);if(found>=0)idx=found+1;}
+  }else if(before){
+    const target=findSceneByToken(before);
+    if(target){const found=scenes.findIndex(scene=>scene.id===target.id);if(found>=0)idx=found;}
+  }else if(act){
+    const last=[...scenes].map((scene,i)=>scene.act===act?i:-1).filter(i=>i>=0).pop();
+    idx=last===undefined?scenes.length:last+1;
+  }
+  scenes.splice(idx,0,...moving);
+  syncOptionsFromScenes();save();render();
+  return 'Moved '+plural(moving.length,'card')+'.';
+}
 function chatSummary(){
   const byStatus=statuses.map(status=>status+': '+scenes.filter(scene=>scene.status===status).length).filter(line=>!line.endsWith(': 0'));
   const byAct=acts.map(act=>act+': '+scenes.filter(scene=>scene.act===act).length).filter(line=>!line.endsWith(': 0'));
@@ -1895,13 +1978,22 @@ function boardAgentInstructions(){
     'Use actions only when the user asks to change the board. For ideas, notes, planning, or questions, use an empty actions array.',
     'Allowed actions:',
     '{"type":"set_field","scope":"all|visible|selected|Act name|Location name|Status name|Camera name|scene number/title","field":"field label","value":"text or list","mode":"set|append"}',
+    '{"type":"set_fields","scope":"same scope options","fields":{"Title":"...","Lyrics":"...","Key shots":["..."],"Props":"..."},"mode":"set|append"}',
+    '{"type":"add_shots","scope":"same scope options","shots":["specific visual shot idea","another shot idea"]}',
+    '{"type":"clear_field","scope":"same scope options","field":"field label"}',
+    '{"type":"remove_text","scope":"same scope options","field":"field label or all","text":"exact text to remove"}',
     '{"type":"copy_field","field":"field label","from":"scene number/title","to":"all|visible|selected|Act name|Location name|Status name|Camera name"}',
     '{"type":"add_scene","act":"Act name","title":"Title","fields":{"location":"...","status":"...","shots":["..."],"props":"..."}}',
     '{"type":"bulk_create_scenes","act":"Act name","cards":[{"title":"Verse title","time":"0:00 – 0:08","lyrics":"lyrics text","fields":{"note":"optional","shots":["optional shot"]}}],"replace":false}',
+    '{"type":"delete_scenes","scope":"selected|visible|Act name|scene number/title"}',
+    '{"type":"move_scenes","scope":"selected|visible|Act name|scene number/title","act":"Act name optional","after":"scene number/title optional","before":"scene number/title optional"}',
     '{"type":"rename_option","optionType":"act|location|status|camera","from":"old","to":"new"}',
     '{"type":"add_option","optionType":"act|location|status|camera","value":"new"}',
     'Fields include act, num, title, time, location, status, camera, lyrics, shots, note, extras, wardrobe, props, and custom field labels.',
     'When the user pastes song sections with verse labels and timestamps, create one card per verse/timed block, filling title, time, and lyrics.',
+    'When the user asks for creative ideas and says to add/apply/fill them in, generate concrete production-ready text and apply it with set_field, set_fields, or add_shots.',
+    'For shot ideas, prefer add_shots or set_field with field "Key shots" and mode "append". Keep each shot short, visual, and filmable.',
+    'For deleting/clearing, use clear_field, remove_text, delete_scene, or delete_scenes. Do not ask for confirmation in JSON; the app treats your action as the requested change.',
     'Prefer exact existing act/location/status/camera names from the board context.',
     'If the user refers to the cards they selected, checked, picked, or intended, use scope "selected".'
   ].join('\n');
@@ -1947,6 +2039,14 @@ function applyAgentActions(actions){
     const type=normChat(action.type).replace(/\s+/g,'_');
     if(type==='set_field'){
       results.push(chatSetField(action.field,action.scope||action.target||'all',action.value,action.mode==='append'?'append':'set'));
+    }else if(type==='set_fields'){
+      results.push(chatSetFields(action.scope||action.target||'all',action.fields||{},action.mode==='append'?'append':'set'));
+    }else if(type==='add_shots'){
+      results.push(chatAddShots(action.scope||action.target||'all',action.shots||action.value||[]));
+    }else if(type==='clear_field'){
+      results.push(chatClearField(action.field,action.scope||action.target||'all'));
+    }else if(type==='remove_text'){
+      results.push(chatRemoveText(action.text||action.value||'',{fieldRaw:action.field||'all',scopeRaw:action.scope||action.target||'all'}));
     }else if(type==='copy_field'){
       results.push(chatCopyField(action.field,action.from||action.source,action.to||action.scope||action.target||'all'));
     }else if(type==='add_scene'){
@@ -1959,6 +2059,10 @@ function applyAgentActions(actions){
       results.push('Added Scene '+scene.num+' to '+scene.act+'.');
     }else if(type==='bulk_create_scenes'){
       results.push(bulkCreateScenes(action.cards||action.scenes||[],{act:action.act||activeFilters.act||acts[0],replace:!!action.replace}));
+    }else if(type==='delete_scenes'){
+      results.push(chatDeleteScenes(action.scope||action.target||'selected'));
+    }else if(type==='move_scenes'){
+      results.push(chatMoveScenes(action.scope||action.target||'selected',{act:action.act,after:action.after,before:action.before}));
     }else if(type==='rename_option'){
       const optionType=String(action.optionType||action.option||'').toLowerCase();
       if(validOptionType(optionType)&&action.from&&action.to){renameOption(optionType,action.from,action.to);results.push('Renamed '+optionType+'.');}
@@ -1981,7 +2085,7 @@ async function runOpenAIAgent(text,key){
         model:getOpenAIModel(),
         instructions:boardAgentInstructions(),
         input:JSON.stringify(boardAgentContext(text)),
-        max_output_tokens:1400,
+        max_output_tokens:4000,
         text:{format:{type:'json_object'}}
       })
     });
@@ -2007,7 +2111,7 @@ async function runClaudeAgent(text,key){
       body:JSON.stringify({
         model:getClaudeModel(),
         system:boardAgentInstructions(),
-        max_tokens:1400,
+        max_tokens:4000,
         messages:[{role:'user',content:JSON.stringify(boardAgentContext(text))}]
       })
     });

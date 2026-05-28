@@ -1677,6 +1677,131 @@ function scenesForScope(raw){
   const scene=findSceneByToken(n);if(scene)return [scene];
   return scenes.filter(scene=>normChat([scene.num,scene.title,scene.act,scene.location,scene.status,...(scene.camera||[])].join(' ')).includes(n));
 }
+function parseTimelineSeconds(raw,{role='start',near=null,otherRaw=''}={}){
+  const token=String(raw||'').trim().replace(/[^\d:]/g,'');
+  if(!token)return null;
+  if(token.startsWith(':')){
+    const sec=parseInt(token.slice(1),10);
+    if(!Number.isFinite(sec))return null;
+    let minute=near!==null?Math.floor(near/60):0;
+    let value=minute*60+sec;
+    if(near!==null&&value<=near)value+=60;
+    return value;
+  }
+  if(token.includes(':')){
+    const parts=token.split(':').map(part=>parseInt(part,10));
+    if(parts.some(part=>!Number.isFinite(part)))return null;
+    if(parts.length===2)return parts[0]*60+parts[1];
+    if(parts.length===3)return parts[0]*3600+parts[1]*60+parts[2];
+  }
+  const n=parseInt(token,10);
+  if(!Number.isFinite(n))return null;
+  if(n<=9){
+    const other=String(otherRaw||'');
+    if(role==='end'&&near!==null&&n*60>near)return n*60;
+    if(role==='start'&&other.includes(':')){
+      const otherSeconds=parseTimelineSeconds(other,{role:'end',near:null});
+      if(otherSeconds!==null&&n*60<otherSeconds)return n*60;
+    }
+  }
+  return n;
+}
+function normalizeTimelineRange(startRaw,endRaw){
+  const start=parseTimelineSeconds(startRaw,{role:'start',otherRaw:endRaw});
+  const end=parseTimelineSeconds(endRaw,{role:'end',near:start});
+  if(start===null||end===null)return '';
+  return fmtTime(start)+' – '+fmtTime(end);
+}
+function timelineHeadingLine(line,nextLine){
+  if(!line||parseTimelineRangeFromLine(line))return false;
+  if(/^verse\b/i.test(line))return false;
+  if(!nextLine||!parseTimelineRangeFromLine(nextLine))return false;
+  return line.length<80;
+}
+function parseTimelineRangeFromLine(line){
+  const text=String(line||'');
+  const match=text.match(/(^|[^\d])(\d{1,2}(?::\d{1,2})?|:\d{1,2})\s*[-–—]\s*(\d{1,2}(?::\d{1,2})?|:\d{1,2})(?!\d)/);
+  if(!match)return null;
+  const before=text.slice(0,match.index+match[1].length).trim().replace(/[:：-]+$/,'').trim();
+  const after=text.slice(match.index+match[0].length).trim();
+  return {before,startRaw:match[2],endRaw:match[3],after,time:normalizeTimelineRange(match[2],match[3])};
+}
+function parseLyricsTimeline(text){
+  const lines=String(text||'')
+    .replace(/\r/g,'\n')
+    .replace(/[\u2028\u2029]/g,'\n')
+    .split('\n')
+    .map(line=>line.trim())
+    .filter(line=>line.length);
+  const items=[];
+  let section='';
+  let current=null;
+  const nextMeaningful=(idx)=>lines.slice(idx+1).find(Boolean)||'';
+  const finish=()=>{
+    if(!current||!current.time)return;
+    const lyrics=current.lyrics.join('\n').trim();
+    items.push({...current,lyrics});
+    current=null;
+  };
+  lines.forEach((line,idx)=>{
+    const range=parseTimelineRangeFromLine(line);
+    if(range&&range.time){
+      finish();
+      const label=range.before.replace(/^[-–—:]+|[-–—:]+$/g,'').trim();
+      const title=label
+        ? (section&&/^verse\b/i.test(label)?section+' · '+label:label)
+        : (section||'Untitled scene');
+      current={section,title,time:range.time,lyrics:[]};
+      if(range.after)current.lyrics.push(range.after);
+      return;
+    }
+    if((!current||current.lyrics.length>0)&&timelineHeadingLine(line,nextMeaningful(idx))){
+      finish();
+      section=line.replace(/[:：]+$/,'').trim();
+      return;
+    }
+    if(current)current.lyrics.push(line);
+    else section=line.replace(/[:：]+$/,'').trim();
+  });
+  finish();
+  return items.filter(item=>item.time&&(item.lyrics||item.title));
+}
+function createScenesFromTimeline(text,{act=null,replace=false}={}){
+  const items=parseLyricsTimeline(text);
+  if(!items.length)return 'I could not find verse timestamp blocks to turn into cards.';
+  const actName=act||activeFilters.act||acts[0]||'New act';
+  addOption('act',actName);
+  if(replace)scenes=scenes.filter(scene=>scene.act!==actName);
+  let nextId=Math.max(...scenes.map(s=>s.id),0)+1;
+  const newScenes=items.map(item=>{
+    const scene={id:nextId++,act:actName,num:String(nextId),title:item.title,time:item.time,location:locations[0]||'Other',status:statuses[0]||'Not shot',lyrics:item.lyrics||'',shots:[],note:item.section?('Song section: '+item.section):'',camera:[],media:[]};
+    fieldSettings.forEach(field=>{if(field.kind!=='shots'&&scene[field.key]===undefined)scene[field.key]='';});
+    return scene;
+  });
+  const lastIndex=[...scenes].map((s,i)=>s.act===actName?i:-1).filter(i=>i>=0).pop();
+  if(lastIndex===undefined)scenes.push(...newScenes);
+  else scenes.splice(lastIndex+1,0,...newScenes);
+  syncOptionsFromScenes();save();render();
+  return 'Created '+plural(newScenes.length,'card')+' from the lyrics/timestamps in '+actName+'.';
+}
+function bulkCreateScenes(cards,{act=null,replace=false}={}){
+  if(!Array.isArray(cards)||!cards.length)return 'No cards were provided.';
+  const actName=act||activeFilters.act||acts[0]||'New act';
+  addOption('act',actName);
+  if(replace)scenes=scenes.filter(scene=>scene.act!==actName);
+  let nextId=Math.max(...scenes.map(s=>s.id),0)+1;
+  const newScenes=cards.map(card=>{
+    const fields=card.fields||{};
+    const scene={id:nextId++,act:card.act||actName,num:String(nextId),title:card.title||'Untitled scene',time:card.time||card.timecode||'',location:card.location||fields.location||locations[0]||'Other',status:card.status||fields.status||statuses[0]||'Not shot',lyrics:card.lyrics||fields.lyrics||'',shots:Array.isArray(card.shots)?card.shots:Array.isArray(fields.shots)?fields.shots:[],note:card.note||fields.note||'',camera:Array.isArray(card.camera)?card.camera:Array.isArray(fields.camera)?fields.camera:[],media:[]};
+    fieldSettings.forEach(field=>{if(field.kind!=='shots'&&scene[field.key]===undefined)scene[field.key]=fields[field.key]||fields[field.label]||'';});
+    return scene;
+  });
+  const lastIndex=[...scenes].map((s,i)=>s.act===actName?i:-1).filter(i=>i>=0).pop();
+  if(lastIndex===undefined)scenes.push(...newScenes);
+  else scenes.splice(lastIndex+1,0,...newScenes);
+  syncOptionsFromScenes();save();render();
+  return 'Created '+plural(newScenes.length,'card')+' in '+actName+'.';
+}
 function createScene(act,overrides={}){
   const id=Math.max(...scenes.map(s=>s.id),0)+1;
   const actName=overrides.act||act||activeFilters.act||acts[0]||'New act';
@@ -1722,6 +1847,11 @@ function runBoardChat(text){
   try{
     const t=String(text||'').trim();
     if(!t)return 'Nothing to change yet.';
+    if(/\b(create|make|build|import|turn|generate)\b[\s\S]{0,120}\bcards?\b/i.test(t)&&parseLyricsTimeline(t).length){
+      const actMatch=t.match(/\b(?:in|to|under|for)\s+(act\s+\d+[^,\n.]*)/i);
+      const act=actMatch?(acts.find(item=>normChat(item).startsWith(normChat(actMatch[1])))||cleanChatValue(actMatch[1])):(activeFilters.act||acts[0]);
+      return createScenesFromTimeline(t,{act});
+    }
     if(/\b(summary|summarize|overview|how many|count)\b/i.test(t))return chatSummary();
     let m=t.match(/^(?:copy|propagate)\s+(.+?)\s+from\s+scene\s+(.+?)\s+to\s+(.+)$/i);
     if(m)return chatCopyField(m[1],m[2],m[3]);
@@ -1767,9 +1897,11 @@ function boardAgentInstructions(){
     '{"type":"set_field","scope":"all|visible|selected|Act name|Location name|Status name|Camera name|scene number/title","field":"field label","value":"text or list","mode":"set|append"}',
     '{"type":"copy_field","field":"field label","from":"scene number/title","to":"all|visible|selected|Act name|Location name|Status name|Camera name"}',
     '{"type":"add_scene","act":"Act name","title":"Title","fields":{"location":"...","status":"...","shots":["..."],"props":"..."}}',
+    '{"type":"bulk_create_scenes","act":"Act name","cards":[{"title":"Verse title","time":"0:00 – 0:08","lyrics":"lyrics text","fields":{"note":"optional","shots":["optional shot"]}}],"replace":false}',
     '{"type":"rename_option","optionType":"act|location|status|camera","from":"old","to":"new"}',
     '{"type":"add_option","optionType":"act|location|status|camera","value":"new"}',
     'Fields include act, num, title, time, location, status, camera, lyrics, shots, note, extras, wardrobe, props, and custom field labels.',
+    'When the user pastes song sections with verse labels and timestamps, create one card per verse/timed block, filling title, time, and lyrics.',
     'Prefer exact existing act/location/status/camera names from the board context.',
     'If the user refers to the cards they selected, checked, picked, or intended, use scope "selected".'
   ].join('\n');
@@ -1825,6 +1957,8 @@ function applyAgentActions(actions){
       });
       syncOptionsFromScenes();save();render();
       results.push('Added Scene '+scene.num+' to '+scene.act+'.');
+    }else if(type==='bulk_create_scenes'){
+      results.push(bulkCreateScenes(action.cards||action.scenes||[],{act:action.act||activeFilters.act||acts[0],replace:!!action.replace}));
     }else if(type==='rename_option'){
       const optionType=String(action.optionType||action.option||'').toLowerCase();
       if(validOptionType(optionType)&&action.from&&action.to){renameOption(optionType,action.from,action.to);results.push('Renamed '+optionType+'.');}

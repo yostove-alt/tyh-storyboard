@@ -193,6 +193,9 @@ body.panel-closed .panel-rail{left:0;}
 /* ── BOARD ── */
 .board{flex:1;padding:24px 28px 88px;overflow-y:auto;min-width:0;}
 body.panel-closed .board{padding-left:56px;}
+body.view-only .write-panel,body.view-only .panel-rail,body.view-only .mood-panel,body.view-only .mood-rail,body.view-only .selection-bar,body.view-only .scene-select,body.view-only .drag-hdl,body.view-only .card-footer,body.view-only .sw-overlay,body.view-only .add-scene-card,body.view-only .add-act-row,body.view-only .story-check,body.view-only .story-drag,body.view-only .story-actions,body.view-only .mood-actions,body.view-only .hdr>label,body.view-only #saveCloudBtn,body.view-only .main-menu-btn,body.view-only .hdr-actions button:last-child{display:none!important;}
+body.view-only .board{padding-left:28px;}
+body.view-only .scene-card select,body.view-only .scene-card input:not([type="range"]),body.view-only .multi-select{pointer-events:none;}
 
 /* ── MOODBOARD ── */
 .mood-panel{width:var(--mood-panel,310px);min-width:260px;max-width:620px;background:var(--surface);border-left:1px solid var(--border);position:sticky;top:103px;height:calc(100vh - 103px);display:flex;flex-direction:column;box-shadow:-4px 0 20px rgba(38,48,32,.04);}
@@ -736,8 +739,10 @@ const AUDIO_STORE='tracks';
 const MEDIA_DB='jdb_media_store';
 const MEDIA_STORE='files';
 const MAX_SAVED_AUDIO_BYTES=15*1024*1024;
+applyCloudConfigFromHash();
 let storyboards=loadStoryboardIndex();
 let activeStoryboardId=loadActiveStoryboardId();
+let viewOnlyMode=isViewOnlyFromHash();
 
 function boardKey(key,id=activeStoryboardId){return 'jdb_board_'+id+'_'+key;}
 function boardGet(key){
@@ -874,16 +879,38 @@ function slugBoardName(name){
   return id;
 }
 function starterBoardName(){return currentStoryboard()?.name||'Little Barditchevers';}
+function hashParams(){
+  return new URLSearchParams(String(location.hash||'').replace(/^#/,''));
+}
 function boardIdFromHash(){
-  const params=new URLSearchParams(String(location.hash||'').replace(/^#/,''));
+  const params=hashParams();
   return params.get('board')||'';
 }
-function boardShareUrl(id=activeStoryboardId){
+function isViewOnlyFromHash(){
+  const params=hashParams();
+  return params.get('view')==='1'||params.get('mode')==='view';
+}
+function applyCloudConfigFromHash(){
+  const params=hashParams();
+  const url=(params.get('sbUrl')||'').trim().replace(/\/+$/,'');
+  const key=(params.get('sbKey')||'').trim();
+  if(url)localStorage.setItem(SUPABASE_URL_KEY,url);
+  if(key)localStorage.setItem(SUPABASE_ANON_KEY_KEY,key);
+}
+function boardShareUrl(id=activeStoryboardId,{viewOnly=false,includeCloud=true}={}){
   const url=new URL(location.href);
-  url.hash='board='+encodeURIComponent(id);
+  const params=new URLSearchParams();
+  params.set('board',id);
+  if(viewOnly)params.set('view','1');
+  if(includeCloud&&cloudConfigured()){
+    params.set('sbUrl',getSupabaseUrl());
+    params.set('sbKey',getSupabaseAnonKey());
+  }
+  url.hash=params.toString();
   return url.href;
 }
 function updateBoardHash(id=activeStoryboardId){
+  if(viewOnlyMode)return;
   const next='#board='+encodeURIComponent(id);
   if(location.hash!==next)history.replaceState(null,'',next);
 }
@@ -1225,6 +1252,7 @@ function storyboardStats(id){
   return {scenes:list.length,acts:actsCount,timed};
 }
 function showStoryboardMenu(){
+  if(viewOnlyMode)return;
   localStorage.setItem(LAST_SCREEN_KEY,'menu');
   renderStoryboardMenu();
   document.getElementById('storyboardMenu').classList.add('show');
@@ -1252,11 +1280,15 @@ function renderStoryboardMenu(){
       statWrap.appendChild(stat);
     });
     const actions=document.createElement('div');actions.className='storyboard-card-actions';
-    const rename=document.createElement('button');rename.className='btn btn-sm';rename.textContent='Rename';rename.onclick=e=>{e.stopPropagation();renameStoryboard(board.id);};
-    const dup=document.createElement('button');dup.className='btn btn-sm';dup.textContent='Duplicate';dup.onclick=e=>{e.stopPropagation();duplicateStoryboard(board.id);};
-    const share=document.createElement('button');share.className='btn btn-sm';share.textContent='Share';share.onclick=e=>{e.stopPropagation();copyBoardLink(board.id);};
-    actions.appendChild(share);actions.appendChild(rename);actions.appendChild(dup);
-    if(storyboards.length>1){
+    const share=document.createElement('button');share.className='btn btn-sm';share.textContent='Team link';share.onclick=e=>{e.stopPropagation();copyBoardLink(board.id);};
+    const client=document.createElement('button');client.className='btn btn-sm';client.textContent='Client view';client.onclick=e=>{e.stopPropagation();copyClientBoardLink(board.id);};
+    actions.appendChild(share);actions.appendChild(client);
+    if(!viewOnlyMode){
+      const rename=document.createElement('button');rename.className='btn btn-sm';rename.textContent='Rename';rename.onclick=e=>{e.stopPropagation();renameStoryboard(board.id);};
+      const dup=document.createElement('button');dup.className='btn btn-sm';dup.textContent='Duplicate';dup.onclick=e=>{e.stopPropagation();duplicateStoryboard(board.id);};
+      actions.appendChild(rename);actions.appendChild(dup);
+    }
+    if(!viewOnlyMode&&storyboards.length>1){
       const del=document.createElement('button');del.className='btn btn-sm';del.textContent='Delete';del.onclick=e=>{e.stopPropagation();deleteStoryboard(board.id);};
       actions.appendChild(del);
     }
@@ -1289,6 +1321,7 @@ function reloadBoardState(){
   restoreStoredBoardMedia();
 }
 function openStoryboard(id){
+  if(viewOnlyMode)return;
   if(id===activeStoryboardId){hideStoryboardMenu();return;}
   activeStoryboardId=id;
   persistStoryboardIndex();
@@ -1298,15 +1331,30 @@ function openStoryboard(id){
   toast('Opened '+(currentStoryboard()?.name||'storyboard'));
 }
 async function copyBoardLink(id){
-  const link=boardShareUrl(id);
+  if(!cloudConfigured())toast('Run Cloud setup before copying a team link',3600);
+  const link=boardShareUrl(id,{viewOnly:false,includeCloud:true});
   try{
     await navigator.clipboard.writeText(link);
-    toast('Storyboard link copied');
+    toast('Team edit link copied');
   }catch(e){
-    prompt('Copy storyboard link:',link);
+    prompt('Copy team edit link:',link);
+  }
+}
+async function copyClientBoardLink(id){
+  if(!cloudConfigured()){
+    toast('Run Cloud setup before copying a client link',3600);
+    return;
+  }
+  const link=boardShareUrl(id,{viewOnly:true,includeCloud:true});
+  try{
+    await navigator.clipboard.writeText(link);
+    toast('Client view-only link copied');
+  }catch(e){
+    prompt('Copy client view-only link:',link);
   }
 }
 function createStoryboard(){
+  if(viewOnlyMode)return;
   const name=(prompt('Storyboard name:','New storyboard')||'').trim();
   if(!name)return;
   const board={id:slugBoardName(name),name,createdAt:Date.now(),updatedAt:Date.now()};
@@ -1374,7 +1422,10 @@ async function collectSharedSnapshot(){
 async function applySharedSnapshot(snapshot,{silent=false}={}){
   if(!snapshot||!Array.isArray(snapshot.storyboards)||!snapshot.storyboards.length||!snapshot.boards)return false;
   storyboards=snapshot.storyboards.map(board=>({...board}));
-  activeStoryboardId=storyboards.some(board=>board.id===activeStoryboardId)?activeStoryboardId:storyboards[0].id;
+  const requested=boardIdFromHash();
+  activeStoryboardId=requested&&storyboards.some(board=>board.id===requested)
+    ?requested
+    :storyboards.some(board=>board.id===activeStoryboardId)?activeStoryboardId:storyboards[0].id;
   for(const board of storyboards){
     const data=snapshot.boards[board.id]||{};
     LEGACY_BOARD_KEYS.forEach(key=>{
@@ -1577,6 +1628,7 @@ function updateCloudStatus(){
   el.textContent=session?'Signed in':'Local only';
 }
 function configureCloud(){
+  if(viewOnlyMode)return;
   const url=(prompt('Supabase project URL:',getSupabaseUrl())||'').trim().replace(/\/+$/,'');
   if(!url)return;
   const key=(prompt('Supabase anon public key:',getSupabaseAnonKey())||'').trim();
@@ -1587,6 +1639,7 @@ function configureCloud(){
   loadSharedBoards({silent:false,force:true});
 }
 async function signInCloud(){
+  if(viewOnlyMode)return;
   if(!cloudConfigured()){configureCloud();if(!cloudConfigured())return;}
   const email=(prompt('Email:')||'').trim();
   if(!email)return;
@@ -1623,6 +1676,7 @@ async function loadSharedBoardsFromSupabase({silent=false,force=false}={}){
   }
 }
 async function saveSharedBoardsToCloud(button){
+  if(viewOnlyMode)return;
   if(!cloudConfigured()){configureCloud();if(!cloudConfigured())return;}
   if(!getCloudSession()){await signInCloud();if(!getCloudSession())return;}
   await refreshCloudSession();
@@ -2210,6 +2264,7 @@ function cloneSceneForDuplicate(scene){
   return clone;
 }
 function duplicateScene(id){
+  if(viewOnlyMode)return null;
   const idx=scenes.findIndex(scene=>scene.id===id);
   if(idx<0)return null;
   const clone=cloneSceneForDuplicate(scenes[idx]);
@@ -2219,6 +2274,7 @@ function duplicateScene(id){
   return clone;
 }
 function deleteSceneById(id){
+  if(viewOnlyMode)return;
   const scene=scenes.find(item=>item.id===id);
   if(!scene)return;
   if(confirm('Delete "'+scene.title+'"?')){
@@ -2228,6 +2284,7 @@ function deleteSceneById(id){
   }
 }
 function createScene(act,overrides={}){
+  if(viewOnlyMode)return null;
   const id=nextSceneId();
   const actName=overrides.act||act||activeFilters.act||acts[0]||'New act';
   addOption('act',actName);
@@ -3346,7 +3403,7 @@ function makeStoryOverview(){
 function makeStoryRow(scene){
   const row=document.createElement('div');row.className='story-row';row.dataset.id=scene.id;
   row.classList.toggle('is-selected',selectedSceneIds.has(scene.id));
-  row.draggable=true;
+  row.draggable=!viewOnlyMode;
   row.addEventListener('dragstart',e=>{storyDragId=scene.id;row.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
   row.addEventListener('dragend',()=>{storyDragId=null;row.classList.remove('dragging');document.querySelectorAll('.story-row').forEach(r=>r.classList.remove('drag-over'));render();});
   row.addEventListener('dragover',e=>{e.preventDefault();if(storyDragId&&storyDragId!==scene.id)row.classList.add('drag-over');});
@@ -3677,11 +3734,12 @@ function renderLyricLines(container,scene){
 }
 
 // INLINE EDITS
-function iEdit(id,key,el,cls){const s=scenes.find(s=>s.id===id);const inp=document.createElement('input');inp.type='text';inp.className=cls;inp.value=s[key];el.replaceWith(inp);inp.focus();inp.select();const done=()=>{s[key]=inp.value||s[key];save();render();};inp.onblur=done;inp.onkeydown=e=>{if(e.key==='Enter')done();if(e.key==='Escape')render();};}
-function iEditTime(id,el){const s=scenes.find(s=>s.id===id);const inp=document.createElement('input');inp.className='time-inp';inp.value=s.time;el.replaceWith(inp);inp.focus();inp.select();const done=()=>{s.time=inp.value;save();render();};inp.onblur=done;inp.onkeydown=e=>{if(e.key==='Enter')done();if(e.key==='Escape')render();};}
-function iEditTA(id,key,el,cls){const s=scenes.find(s=>s.id===id);const ta=document.createElement('textarea');ta.className=cls;ta.value=s[key]||'';el.replaceWith(ta);ta.focus();const done=()=>{s[key]=ta.value;save();render();};ta.onblur=done;ta.onkeydown=e=>{if(e.key==='Escape')done();};}
-function iEditShot(id,idx,el){const s=scenes.find(s=>s.id===id);const inp=document.createElement('input');inp.className='shot-inp';inp.value=s.shots[idx];el.replaceWith(inp);inp.focus();inp.select();const done=()=>{s.shots[idx]=inp.value||s.shots[idx];save();render();};inp.onblur=done;inp.onkeydown=e=>{if(e.key==='Enter')done();if(e.key==='Escape')render();};}
+function iEdit(id,key,el,cls){if(viewOnlyMode)return;const s=scenes.find(s=>s.id===id);const inp=document.createElement('input');inp.type='text';inp.className=cls;inp.value=s[key];el.replaceWith(inp);inp.focus();inp.select();const done=()=>{s[key]=inp.value||s[key];save();render();};inp.onblur=done;inp.onkeydown=e=>{if(e.key==='Enter')done();if(e.key==='Escape')render();};}
+function iEditTime(id,el){if(viewOnlyMode)return;const s=scenes.find(s=>s.id===id);const inp=document.createElement('input');inp.className='time-inp';inp.value=s.time;el.replaceWith(inp);inp.focus();inp.select();const done=()=>{s.time=inp.value;save();render();};inp.onblur=done;inp.onkeydown=e=>{if(e.key==='Enter')done();if(e.key==='Escape')render();};}
+function iEditTA(id,key,el,cls){if(viewOnlyMode)return;const s=scenes.find(s=>s.id===id);const ta=document.createElement('textarea');ta.className=cls;ta.value=s[key]||'';el.replaceWith(ta);ta.focus();const done=()=>{s[key]=ta.value;save();render();};ta.onblur=done;ta.onkeydown=e=>{if(e.key==='Escape')done();};}
+function iEditShot(id,idx,el){if(viewOnlyMode)return;const s=scenes.find(s=>s.id===id);const inp=document.createElement('input');inp.className='shot-inp';inp.value=s.shots[idx];el.replaceWith(inp);inp.focus();inp.select();const done=()=>{s.shots[idx]=inp.value||s.shots[idx];save();render();};inp.onblur=done;inp.onkeydown=e=>{if(e.key==='Enter')done();if(e.key==='Escape')render();};}
 function iEditLoc(id,el){
+  if(viewOnlyMode)return;
   const s=scenes.find(s=>s.id===id);const sel=document.createElement('select');sel.className='pill-sel-inline';
   [...locations,'＋ Add location…'].forEach(l=>{const o=document.createElement('option');o.value=l;o.textContent=l;if(s.location===l)o.selected=true;sel.appendChild(o);});
   el.replaceWith(sel);sel.focus();
@@ -3690,6 +3748,7 @@ function iEditLoc(id,el){
   sel.onblur=done;sel.onchange=done;
 }
 function editActName(actName,el){
+  if(viewOnlyMode)return;
   const inp=document.createElement('input');inp.className='act-name-inp';inp.value=actName;el.replaceWith(inp);inp.focus();inp.select();
   let doneOnce=false;
   const done=()=>{
@@ -3708,9 +3767,9 @@ function loadIntoPanel(id){
   fieldSettings.forEach(field=>{if(field.kind!=='shots')compose[field.key]=s[field.key]||'';});
   openPanel('compose');toast('Loaded into panel');
 }
-function addSceneToAct(act){const scene=createScene(act);toast('Scene added');setTimeout(()=>{const title=document.querySelector('.scene-card[data-id="'+scene.id+'"] .scene-title');if(title)iEdit(scene.id,'title',title,'scene-title-inp');},120);}
-function addSceneGlobal(){addSceneToAct(activeFilters.act||acts[0]||'New act');}
-function addAct(){const name=prompt('New act name:');const added=addOption('act',name);if(!added)return;render();toast('Act added');}
+function addSceneToAct(act){if(viewOnlyMode)return;const scene=createScene(act);if(!scene)return;toast('Scene added');setTimeout(()=>{const title=document.querySelector('.scene-card[data-id="'+scene.id+'"] .scene-title');if(title)iEdit(scene.id,'title',title,'scene-title-inp');},120);}
+function addSceneGlobal(){if(viewOnlyMode)return;addSceneToAct(activeFilters.act||acts[0]||'New act');}
+function addAct(){if(viewOnlyMode)return;const name=prompt('New act name:');const added=addOption('act',name);if(!added)return;render();toast('Act added');}
 
 function saveVideoOverview(value){
   videoOverview=value;
@@ -4051,6 +4110,7 @@ function parseTimecode(str){
 function exportJSON(){const blob=new Blob([JSON.stringify({scenes,fieldSettings,acts,locations,statuses,cameras,viewerRatio,cardHeight},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='judoboards_barditchevers.json';a.click();toast('Exported!');}
 function handleImport(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const data=JSON.parse(ev.target.result);if(Array.isArray(data)){scenes=data;}else{scenes=data.scenes||[];if(Array.isArray(data.fieldSettings)){boardSet('jdb_field_settings',JSON.stringify(data.fieldSettings));fieldSettings=loadFieldSettings();}if(Array.isArray(data.acts))acts=data.acts;if(Array.isArray(data.locations))locations=data.locations;if(Array.isArray(data.statuses))statuses=data.statuses;if(Array.isArray(data.cameras))cameras=data.cameras;if(data.viewerRatio)saveViewerRatio(data.viewerRatio);if(data.cardHeight)saveCardHeight(data.cardHeight);}syncOptionsFromScenes();save();render();toast('Imported!');}catch{toast('Invalid file');}};r.readAsText(f);e.target.value='';}
 
+document.body.classList.toggle('view-only',viewOnlyMode);
 render();
 setPanel(panelOpen);
 setMoodPanelWidth(moodPanelWidth);
@@ -4060,10 +4120,15 @@ updateProjectName();
 updateCloudStatus();
 if(boardIdFromHash())localStorage.setItem(LAST_SCREEN_KEY,'board');
 if(localStorage.getItem(LAST_SCREEN_KEY)!=='board')showStoryboardMenu();
-loadSharedBoards({silent:true});
+loadSharedBoards({silent:true,force:viewOnlyMode});
 restoreStoredAudio();
 renderMoodboard();
-window.addEventListener('hashchange',()=>{if(openHashBoardIfPresent())hideStoryboardMenu();});
+window.addEventListener('hashchange',()=>{
+  applyCloudConfigFromHash();
+  viewOnlyMode=isViewOnlyFromHash();
+  document.body.classList.toggle('view-only',viewOnlyMode);
+  if(openHashBoardIfPresent())hideStoryboardMenu();
+});
 </script>
 
 <script>
@@ -4073,6 +4138,7 @@ async function saveToCloud() {
 }
 
 function openLocalMediaPicker(sceneId,media,ci,rSw,setCi){
+  if(viewOnlyMode)return;
   const input=document.createElement('input');
   input.type='file';
   input.accept='image/*,video/*,.heic,.mov,.mp4,.webm';

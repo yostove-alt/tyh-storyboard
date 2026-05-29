@@ -1488,7 +1488,7 @@ function dataUrlToFile(dataUrl,name='image.png'){
   const fileName=/\.[a-z0-9]+$/i.test(name)?name:(name+'.'+ext);
   return new File([bytes],fileName,{type:mime});
 }
-async function uploadFileToStorage(file,{mediaId=newMediaId(),boardId=activeStoryboardId}={}){
+async function uploadFileToStorage(file,{mediaId=newMediaId(),boardId=activeStoryboardId,retries=0}={}){
   if(!cloudConfigured()||!getCloudSession())return null;
   await refreshCloudSession();
   const session=getCloudSession();
@@ -1508,8 +1508,8 @@ async function uploadFileToStorage(file,{mediaId=newMediaId(),boardId=activeStor
   if(!response.ok){
     let detail='',code='';
     try{const err=await response.json();detail=err.message||err.error||err.details||'';code=err.statusCode||err.code||'';}catch(e){}
-    if(response.status===409){
-      return await uploadFileToStorage(file,{mediaId:newMediaId(),boardId});
+    if((response.status===409||/resource already exists|already exists|duplicate/i.test(detail+' '+code))&&retries<3){
+      return await uploadFileToStorage(file,{mediaId:newMediaId(),boardId,retries:retries+1});
     }
     throw new Error((detail||('Storage upload failed '+response.status))+(code?' ['+code+']':''));
   }

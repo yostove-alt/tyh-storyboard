@@ -1450,7 +1450,7 @@ async function loadSharedBoards({silent=false,force=false}={}){
     if(loaded)return true;
   }
   try{
-    const response=await fetch(CLOUD_PATH+'?v='+Date.now(),{cache:'no-store'});
+    const response=await fetchWithTimeout(CLOUD_PATH+'?v='+Date.now(),{cache:'no-store'},4500);
     if(!response.ok)return false;
     const snapshot=await response.json();
     const loaded=parseInt(localStorage.getItem(CLOUD_LOADED_KEY)||'0',10);
@@ -1509,6 +1509,15 @@ function cloudHeaders(auth=false){
     Authorization:'Bearer '+(auth&&session?.access_token?session.access_token:getSupabaseAnonKey()),
     'Content-Type':'application/json'
   };
+}
+async function fetchWithTimeout(url,options={},timeoutMs=10000){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),timeoutMs);
+  try{
+    return await fetch(url,{...options,signal:options.signal||controller.signal});
+  }finally{
+    clearTimeout(timer);
+  }
 }
 function isShareableMediaUrl(url){
   return /^https?:\/\//i.test(String(url||''));
@@ -1680,9 +1689,9 @@ async function signInCloud(){
 }
 async function loadSharedBoardsFromSupabase({silent=false,force=false}={}){
   try{
-    const response=await fetch(getSupabaseUrl()+'/rest/v1/'+SUPABASE_TABLE+'?id=eq.'+encodeURIComponent(SUPABASE_ROW_ID)+'&select=data,updated_at&limit=1',{
+    const response=await fetchWithTimeout(getSupabaseUrl()+'/rest/v1/'+SUPABASE_TABLE+'?id=eq.'+encodeURIComponent(SUPABASE_ROW_ID)+'&select=data,updated_at&limit=1',{
       headers:cloudHeaders(false)
-    });
+    },9000);
     if(!response.ok)return false;
     const rows=await response.json();
     if(!rows.length||!rows[0].data)return false;
@@ -3484,8 +3493,8 @@ function makeStoryThumb(scene){
   thumb.title=allMedia.length?'Open media viewer':'No media yet';
   thumb.onclick=e=>{e.stopPropagation();if(allMedia.length)openLB(allMedia,0,scene.title);};
   if(media){
-    if(media.type==='video'){const v=document.createElement('video');v.src=media.url;v.muted=true;v.preload='metadata';thumb.appendChild(v);}
-    else{const img=document.createElement('img');img.src=media.url;img.alt='';thumb.appendChild(img);}
+    if(media.type==='video'){const v=document.createElement('video');v.src=media.url;v.muted=true;v.preload='none';thumb.appendChild(v);}
+    else{const img=document.createElement('img');img.src=media.url;img.alt='';img.loading='lazy';img.decoding='async';thumb.appendChild(img);}
   }else{
     thumb.innerHTML='<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
   }
@@ -3550,11 +3559,11 @@ function makeCard(scene){
       btn.title=m.name||('Media '+(i+1));
       btn.onclick=e=>{e.stopPropagation();ci=i;rSw();};
       if(m.type==='video'){
-        const vid=document.createElement('video');vid.src=m.url;vid.muted=true;vid.preload='metadata';
+        const vid=document.createElement('video');vid.src=m.url;vid.muted=true;vid.preload='none';
         const play=document.createElement('span');play.className='thumb-play';play.innerHTML='&#9658;';
         btn.appendChild(vid);btn.appendChild(play);
       } else {
-        const img=document.createElement('img');img.src=m.url;img.alt='';
+        const img=document.createElement('img');img.src=m.url;img.alt='';img.loading='lazy';img.decoding='async';
         btn.appendChild(img);
       }
       const badge=document.createElement('span');badge.className='mood-cloud-badge'+(isCloudMedia(m)?' cloud':'');badge.textContent=isCloudMedia(m)?'Cloud':'Local';
@@ -3575,13 +3584,13 @@ function makeCard(scene){
       media.forEach((m,i)=>{const slide=document.createElement('div');slide.className='sw-slide';if(m.type==='video'){
         // Thumbnail only in card — click opens lightbox for full playback
         const thumb=document.createElement('div');thumb.style.cssText='width:100%;height:100%;background:#111;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;';
-        const vid=document.createElement('video');vid.src=m.url;vid.preload='metadata';vid.style.cssText='width:100%;height:100%;object-fit:cover;position:absolute;inset:0;';
+        const vid=document.createElement('video');vid.src=m.url;vid.preload='none';vid.style.cssText='width:100%;height:100%;object-fit:cover;position:absolute;inset:0;';
         const po=document.createElement('div');po.style.cssText='position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.55);border-radius:50%;width:44px;height:44px;display:flex;align-items:center;justify-content:center;z-index:2;pointer-events:none;';
         po.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21"/></svg>';
         thumb.appendChild(vid);thumb.appendChild(po);
         thumb.onclick=()=>openLB(media,i,scene.title);
         slide.appendChild(thumb);
-      }else{const img=document.createElement('img');img.src=m.url;img.alt='';img.onclick=()=>openLB(media,i,scene.title);slide.appendChild(img);}track.appendChild(slide);});
+      }else{const img=document.createElement('img');img.src=m.url;img.alt='';img.loading='lazy';img.decoding='async';img.onclick=()=>openLB(media,i,scene.title);slide.appendChild(img);}track.appendChild(slide);});
       if(ci>=media.length)ci=media.length-1;
       track.style.transform=`translateX(-${ci*100}%)`;
     }
@@ -3887,13 +3896,13 @@ function renderMoodboard(){
     }else if(item.kind==='link'){
       card.draggable=false;
       const l=document.createElement('div');l.className='mood-card-link';
-      l.innerHTML='<div class="link-preview-top"><img src="'+escapeHtml(faviconUrl(item.href))+'" alt=""><span class="link-domain">'+escapeHtml(domainLabel(item.href))+'</span></div><div class="link-url">'+escapeHtml(item.href)+'</div>';
+      l.innerHTML='<div class="link-preview-top"><img src="'+escapeHtml(faviconUrl(item.href))+'" alt="" loading="lazy" decoding="async"><span class="link-domain">'+escapeHtml(domainLabel(item.href))+'</span></div><div class="link-url">'+escapeHtml(item.href)+'</div>';
       card.appendChild(l);
       card.onclick=()=>window.open(item.href,'_blank');
     }else if(item.type==='video'){
-      const v=document.createElement('video');v.src=item.url;v.muted=true;v.preload='metadata';card.appendChild(v);card.onclick=()=>openLB([item],0,mediaLabel(item));
+      const v=document.createElement('video');v.src=item.url;v.muted=true;v.preload='none';card.appendChild(v);card.onclick=()=>openLB([item],0,mediaLabel(item));
     }else{
-      const img=document.createElement('img');img.src=item.url;img.alt='';card.appendChild(img);card.onclick=()=>openLB([item],0,mediaLabel(item));
+      const img=document.createElement('img');img.src=item.url;img.alt='';img.loading='lazy';img.decoding='async';card.appendChild(img);card.onclick=()=>openLB([item],0,mediaLabel(item));
     }
     if(!item.kind){
       const badge=document.createElement('div');badge.className='mood-cloud-badge'+(isCloudMedia(item)?' cloud':'');badge.textContent=isCloudMedia(item)?'Cloud':'Local';
@@ -4224,7 +4233,6 @@ async function restoreStoredBoardMedia(){
   for(const item of moodboard)await restoreItem(item);
   if(changed){render();renderMoodboard();}
 }
-restoreStoredBoardMedia();
 </script>
 </body>
 </html>

@@ -1410,6 +1410,7 @@ function deleteStoryboard(id){
 // ── SHARED DATABASE SAVE ──
 async function collectSharedSnapshot(){
   await syncLocalMediaToCloud({notify:false});
+  normalizeCloudMediaReferences();
   save();
   const boards={};
   for(const board of storyboards){
@@ -1533,6 +1534,14 @@ function cleanStorageName(name){
 function storagePublicUrl(path){
   return getSupabaseUrl()+'/storage/v1/object/public/'+encodeURIComponent(SUPABASE_STORAGE_BUCKET)+'/'+path.split('/').map(encodeURIComponent).join('/');
 }
+function normalizeCloudMediaReference(item){
+  if(item?.storagePath&&cloudConfigured()&&!isShareableMediaUrl(item.url))item.url=storagePublicUrl(item.storagePath);
+  return item;
+}
+function normalizeCloudMediaReferences(){
+  scenes.forEach(scene=>(scene.media||[]).forEach(normalizeCloudMediaReference));
+  moodboard.forEach(normalizeCloudMediaReference);
+}
 function dataUrlToFile(dataUrl,name='image.png'){
   const parts=String(dataUrl||'').match(/^data:([^;,]+)?(;base64)?,(.*)$/);
   if(!parts)return null;
@@ -1571,7 +1580,9 @@ async function uploadFileToStorage(file,{mediaId=newMediaId(),boardId=activeStor
   }
   return {mediaId,storagePath:path,url:storagePublicUrl(path)};
 }
-async function uploadStoredMediaItem(item,boardId=activeStoryboardId){
+async function uploadStoredMediaItem(item,boardId=activeStoryboardId,{strict=false}={}){
+  normalizeCloudMediaReference(item);
+  if(item?.kind)return false;
   if(!item||isCloudMedia(item))return false;
   let file=null;
   let mediaId=item.storedId||newMediaId();
@@ -1588,7 +1599,10 @@ async function uploadStoredMediaItem(item,boardId=activeStoryboardId){
     const blob=await fetch(item.url).then(r=>r.ok?r.blob():null).catch(()=>null);
     if(blob)file=new File([blob],item.name||'media',{type:blob.type||item.type||'application/octet-stream'});
   }
-  if(!file)throw new Error('Could not find local file data for '+(item.name||'media')+'. Re-upload it on this browser, then sync again.');
+  if(!file){
+    if(strict)throw new Error('Could not find local file data for '+(item.name||'media')+'. Re-upload it on this browser, then sync again.');
+    return false;
+  }
   const uploaded=await uploadFileToStorage(file,{mediaId,boardId});
   if(!uploaded)return false;
   item.url=uploaded.url;
@@ -1599,6 +1613,7 @@ async function uploadStoredMediaItem(item,boardId=activeStoryboardId){
   return true;
 }
 async function syncLocalMediaToCloud({notify=true}={}){
+  normalizeCloudMediaReferences();
   if(!cloudConfigured()||!getCloudSession()){
     const counts=mediaCloudCounts();
     lastMediaSyncResult={uploaded:0,failed:0,localOnly:counts.local,total:counts.total,configured:false};
@@ -1608,7 +1623,7 @@ async function syncLocalMediaToCloud({notify=true}={}){
   let changed=false,uploaded=0,failed=0,errors=[];
   const syncItem=async item=>{
     try{
-      if(await uploadStoredMediaItem(item)){changed=true;uploaded++;}
+      if(await uploadStoredMediaItem(item,activeStoryboardId,{strict:notify})){changed=true;uploaded++;}
     }catch(e){failed++;if(errors.length<3)errors.push(e.message||'Upload failed');}
   };
   for(const scene of scenes){
@@ -1724,8 +1739,8 @@ async function saveSharedBoardsToCloud(button){
       }
     }
     localStorage.setItem(CLOUD_LOADED_KEY,String(snapshot.updatedAt));
-    if(lastMediaSyncResult?.localOnly||lastMediaSyncResult?.failed){
-      toast(lastMediaSyncResult.errors?.[0]||('Shared saved, but '+(lastMediaSyncResult.localOnly||lastMediaSyncResult.failed)+' media file(s) are still local-only'),7000);
+    if(lastMediaSyncResult?.failed){
+      toast(lastMediaSyncResult.errors?.[0]||('Shared saved, but '+lastMediaSyncResult.failed+' media file(s) could not upload'),7000);
     }else{
       toast('Saved shared boards');
     }

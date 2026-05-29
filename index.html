@@ -518,13 +518,20 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
   .lyrics-mobile-view{max-width:720px;margin:0 auto;}
   .lyrics-mobile-view .song-lyrics{min-height:48vh;}
   :root{--card-w:calc(100vw - 28px);--card-h:640px;}
-  .scene-grid{display:flex;}
+  .scene-grid{display:flex;flex-direction:column;overflow-x:visible;overflow-y:visible;gap:14px;padding:0;}
   .chat-config{grid-template-columns:1fr 84px;}
-  .scene-card{width:var(--card-w);min-width:0;height:var(--card-h);min-height:560px;flex-basis:var(--card-w);}
+  .scene-card{width:100%;min-width:0;height:var(--card-h);min-height:560px;flex:0 0 auto;}
   .story-overview{grid-template-columns:repeat(2,minmax(0,1fr));}
-  .story-row{grid-template-columns:auto 72px minmax(0,1fr);align-items:start;}
-  .story-thumb{width:72px;}
-  .story-meta{grid-column:2/4;align-items:flex-start;min-width:0;}
+  .story-list{display:grid;grid-template-columns:1fr;gap:14px;}
+  .story-row{display:flex;flex-direction:column;gap:10px;align-items:stretch;padding:10px;border-radius:14px;min-height:0;}
+  .story-left,.story-meta .story-pills,.story-actions{display:none!important;}
+  .story-thumb{width:100%;aspect-ratio:1/1;border-radius:12px;}
+  .story-main{display:flex;flex-direction:column;gap:6px;}
+  .story-kicker{font-size:11px;margin:0;color:var(--accent);}
+  .story-title{white-space:normal;font-size:24px;line-height:1.05;margin:0;padding:0;border:0;}
+  .story-lyrics,.story-note{-webkit-line-clamp:4;margin:0;padding:8px 9px;font-size:13px;line-height:1.42;border-radius:9px;}
+  .story-note{background:var(--gold-l);border-color:rgba(169,112,19,.28);}
+  .story-meta{align-items:flex-start;min-width:0;display:flex;flex-direction:row;gap:8px;order:3;}
   .add-scene-card{width:44px;height:44px;flex-basis:44px;margin:0 auto;}
   .card-footer{flex-wrap:wrap;}
 }

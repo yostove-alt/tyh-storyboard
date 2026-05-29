@@ -1494,21 +1494,24 @@ async function uploadFileToStorage(file,{mediaId=newMediaId(),boardId=activeStor
   const session=getCloudSession();
   if(!session?.access_token)return null;
   const path=boardId+'/'+mediaId+'/'+cleanStorageName(file.name);
-  const response=await fetch(getSupabaseUrl()+'/storage/v1/object/'+encodeURIComponent(SUPABASE_STORAGE_BUCKET)+'/'+path.split('/').map(encodeURIComponent).join('/'),{
+  const uploadUrl=getSupabaseUrl()+'/storage/v1/object/'+encodeURIComponent(SUPABASE_STORAGE_BUCKET)+'/'+path.split('/').map(encodeURIComponent).join('/');
+  const response=await fetch(uploadUrl,{
     method:'POST',
     headers:{
       apikey:getSupabaseAnonKey(),
       Authorization:'Bearer '+session.access_token,
-      'x-upsert':'true',
       'Content-Type':file.type||'application/octet-stream',
       'Cache-Control':'3600'
     },
     body:file
   });
   if(!response.ok){
-    let detail='';
-    try{const err=await response.json();detail=err.message||err.error||'';}catch(e){}
-    throw new Error(detail||('Storage upload failed '+response.status));
+    let detail='',code='';
+    try{const err=await response.json();detail=err.message||err.error||err.details||'';code=err.statusCode||err.code||'';}catch(e){}
+    if(response.status===409){
+      return await uploadFileToStorage(file,{mediaId:newMediaId(),boardId});
+    }
+    throw new Error((detail||('Storage upload failed '+response.status))+(code?' ['+code+']':''));
   }
   return {mediaId,storagePath:path,url:storagePublicUrl(path)};
 }
@@ -1525,7 +1528,11 @@ async function uploadStoredMediaItem(item,boardId=activeStoryboardId){
   if(!file&&String(item.url||'').startsWith('data:')){
     file=dataUrlToFile(item.url,item.name||'image');
   }
-  if(!file)return false;
+  if(!file&&String(item.url||'').startsWith('blob:')){
+    const blob=await fetch(item.url).then(r=>r.ok?r.blob():null).catch(()=>null);
+    if(blob)file=new File([blob],item.name||'media',{type:blob.type||item.type||'application/octet-stream'});
+  }
+  if(!file)throw new Error('Could not find local file data for '+(item.name||'media')+'. Re-upload it on this browser, then sync again.');
   const uploaded=await uploadFileToStorage(file,{mediaId,boardId});
   if(!uploaded)return false;
   item.url=uploaded.url;
@@ -1542,11 +1549,11 @@ async function syncLocalMediaToCloud({notify=true}={}){
     if(notify&&counts.local)toast('Sign in to cloud before syncing '+counts.local+' local media file(s)',4200);
     return lastMediaSyncResult;
   }
-  let changed=false,uploaded=0,failed=0;
+  let changed=false,uploaded=0,failed=0,errors=[];
   const syncItem=async item=>{
     try{
       if(await uploadStoredMediaItem(item)){changed=true;uploaded++;}
-    }catch(e){failed++;}
+    }catch(e){failed++;if(errors.length<3)errors.push(e.message||'Upload failed');}
   };
   for(const scene of scenes){
     for(const item of (scene.media||[]))await syncItem(item);
@@ -1554,10 +1561,10 @@ async function syncLocalMediaToCloud({notify=true}={}){
   for(const item of moodboard)await syncItem(item);
   if(changed){save();saveMoodboard();}
   const counts=mediaCloudCounts();
-  lastMediaSyncResult={uploaded,failed,localOnly:counts.local,total:counts.total,configured:true};
+  lastMediaSyncResult={uploaded,failed,localOnly:counts.local,total:counts.total,configured:true,errors};
   if(notify){
     if(uploaded)toast('Uploaded '+uploaded+' media file(s) to Supabase Storage');
-    if(failed||counts.local)toast((failed||counts.local)+' media file(s) still local-only. Check Storage bucket setup.',5200);
+    if(failed||counts.local)toast((errors[0]||((failed||counts.local)+' media file(s) still local-only. Check Storage bucket setup.')),7000);
     if(!uploaded&&!failed&&!counts.local)toast('All media is cloud-ready');
   }
   return lastMediaSyncResult;
@@ -1620,9 +1627,9 @@ async function saveSharedBoardsToCloud(button){
   if(!getCloudSession()){await signInCloud();if(!getCloudSession())return;}
   await refreshCloudSession();
   if(!getCloudSession()){await signInCloud();if(!getCloudSession())return;}
-  const snapshot=await collectSharedSnapshot();
   button.disabled=true;button.textContent='Saving shared...';
   try{
+    const snapshot=await collectSharedSnapshot();
     let response=await fetch(getSupabaseUrl()+'/rest/v1/'+SUPABASE_TABLE,{
       method:'POST',
       headers:{...cloudHeaders(true),Prefer:'resolution=merge-duplicates,return=minimal'},
@@ -1659,7 +1666,7 @@ async function saveSharedBoardsToCloud(button){
     }
     localStorage.setItem(CLOUD_LOADED_KEY,String(snapshot.updatedAt));
     if(lastMediaSyncResult?.localOnly||lastMediaSyncResult?.failed){
-      toast('Shared saved, but '+(lastMediaSyncResult.localOnly||lastMediaSyncResult.failed)+' media file(s) are still local-only',5600);
+      toast(lastMediaSyncResult.errors?.[0]||('Shared saved, but '+(lastMediaSyncResult.localOnly||lastMediaSyncResult.failed)+' media file(s) are still local-only'),7000);
     }else{
       toast('Saved shared boards');
     }
@@ -3838,7 +3845,10 @@ async function syncMediaButton(button){
   const old=button.textContent;
   button.disabled=true;button.textContent='Syncing...';
   try{
-    await syncLocalMediaToCloud({notify:true});
+    const result=await syncLocalMediaToCloud({notify:true});
+    if(result?.errors?.length){
+      alert('Media sync failed:\n\n'+result.errors.join('\n\n')+'\n\nMost common fix: run the latest supabase-schema.sql in Supabase SQL Editor so the storyboard-media bucket and policies exist.');
+    }
     renderMoodboard();render();
   }finally{
     button.disabled=false;button.textContent=old;

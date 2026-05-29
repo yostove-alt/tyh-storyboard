@@ -740,6 +740,7 @@ const SUPABASE_TABLE='storyboard_snapshots';
 const SUPABASE_VERSIONS_TABLE='storyboard_versions';
 const SUPABASE_ROW_ID='default';
 const SUPABASE_STORAGE_BUCKET='storyboard-media';
+const PANEL_OPEN_KEY='jdb_panel_open';
 const AUDIO_DB='jdb_audio_store';
 const AUDIO_STORE='tracks';
 const MEDIA_DB='jdb_media_store';
@@ -976,7 +977,7 @@ let statuses=loadOptionList('jdb_statuses',DEFAULT_STATUSES);
 let cameras=loadOptionList('jdb_cameras',DEFAULT_CAMS);
 let viewerRatio=loadViewerRatio();
 let cardHeight=loadCardHeight();
-let panelOpen=true;
+let panelOpen=localStorage.getItem(PANEL_OPEN_KEY)!=='false';
 let moodPanelOpen=localStorage.getItem(MOOD_PANEL_OPEN_KEY)!=='false';
 let moodPanelWidth=parseInt(localStorage.getItem(MOOD_PANEL_WIDTH_KEY)||'310',10);
 let activeTab='agent';
@@ -1838,6 +1839,7 @@ async function saveSharedBoardsToCloud(button){
 // ── PANEL ──
 function setPanel(open){
   panelOpen=open;
+  localStorage.setItem(PANEL_OPEN_KEY,String(open));
   document.getElementById('writePanel').classList.toggle('collapsed',!panelOpen);
   document.body.classList.toggle('panel-closed',!panelOpen);
   document.getElementById('panelRail').textContent=panelOpen?'Hide panel':'Open panel';

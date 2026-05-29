@@ -192,6 +192,7 @@ body.panel-closed .panel-rail{left:0;}
 
 /* ── BOARD ── */
 .board{flex:1;padding:24px 28px 88px;overflow-y:auto;min-width:0;}
+body.panel-closed .board{padding-left:56px;}
 
 /* ── MOODBOARD ── */
 .mood-panel{width:var(--mood-panel,310px);min-width:260px;max-width:620px;background:var(--surface);border-left:1px solid var(--border);position:sticky;top:103px;height:calc(100vh - 103px);display:flex;flex-direction:column;box-shadow:-4px 0 20px rgba(38,48,32,.04);}
@@ -497,6 +498,7 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
   .panel-rail,body.panel-closed .panel-rail{top:auto;bottom:14px;left:14px;transform:none;writing-mode:horizontal-tb;border-radius:999px;border:1px solid var(--accent);padding:9px 13px;}
   .panel-body{max-height:none;overflow:visible;}
   .board{padding:16px 14px 72px;}
+  body.panel-closed .board{padding-left:14px;}
   .mood-panel{position:relative;top:auto;width:100%;min-width:0;height:auto;border-left:0;border-top:1px solid var(--border);}
   .mood-resize{display:none;}
   .mood-rail,body.mood-closed .mood-rail{top:auto;right:14px;bottom:14px;transform:none;writing-mode:horizontal-tb;border-radius:999px;border:1px solid var(--accent);padding:9px 13px;}

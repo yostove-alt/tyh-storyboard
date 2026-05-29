@@ -194,7 +194,7 @@ body.panel-closed .panel-rail{left:0;}
 /* ── BOARD ── */
 .board{flex:1;padding:24px 28px 88px;overflow-y:auto;min-width:0;}
 body.panel-closed .board{padding-left:56px;}
-body.view-only .write-panel,body.view-only .panel-rail,body.view-only .mood-panel,body.view-only .mood-rail,body.view-only .selection-bar,body.view-only .scene-select,body.view-only .drag-hdl,body.view-only .card-footer,body.view-only .sw-overlay,body.view-only .add-scene-card,body.view-only .add-act-row,body.view-only .story-check,body.view-only .story-drag,body.view-only .story-actions,body.view-only .mood-actions,body.view-only .hdr>label,body.view-only #saveCloudBtn,body.view-only .main-menu-btn,body.view-only .hdr-actions button:last-child{display:none!important;}
+body.view-only .write-panel,body.view-only .panel-rail,body.view-only .mood-panel,body.view-only .mood-rail,body.view-only .selection-bar,body.view-only .scene-select,body.view-only .drag-hdl,body.view-only .card-footer,body.view-only .sw-overlay,body.view-only .add-scene-card,body.view-only .add-act-row,body.view-only .story-check,body.view-only .story-drag,body.view-only .story-actions,body.view-only .mood-actions,body.view-only .hdr>label,body.view-only #saveCloudBtn,body.view-only .cloud-edit-action,body.view-only .main-menu-btn,body.view-only .hdr-actions button:last-child{display:none!important;}
 body.view-only .board{padding-left:28px;}
 body.view-only .scene-card select,body.view-only .scene-card input:not([type="range"]),body.view-only .multi-select{pointer-events:none;}
 
@@ -558,6 +558,8 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
   <div class="hdr-actions">
     <button class="btn btn-sm main-menu-btn" onclick="showStoryboardMenu()">Main menu</button>
     <button class="btn btn-primary btn-sm" id="saveCloudBtn" onclick="saveToCloud()">Save shared</button>
+    <button class="btn btn-sm cloud-edit-action" onclick="openVersionHistory()">Versions</button>
+    <button class="btn btn-sm cloud-edit-action" onclick="revertToShared()">Revert shared</button>
     <button class="btn btn-gold btn-sm" onclick="window.print()">PDF</button>
     <button class="btn btn-sm" onclick="exportJSON()">Export</button>
   </div>
@@ -693,6 +695,8 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
         <span class="cloud-status" id="cloudStatus">Local only</span>
         <button class="btn" onclick="configureCloud()">Cloud setup</button>
         <button class="btn" onclick="signInCloud()">Sign in</button>
+        <button class="btn cloud-edit-action" onclick="openVersionHistory()">Versions</button>
+        <button class="btn cloud-edit-action" onclick="revertToShared()">Revert shared</button>
         <button class="btn btn-primary" onclick="createStoryboard()">+ New storyboard</button>
         <button class="btn" onclick="hideStoryboardMenu()">Open current</button>
       </div>
@@ -733,6 +737,7 @@ const SUPABASE_URL_KEY='jdb_supabase_url';
 const SUPABASE_ANON_KEY_KEY='jdb_supabase_anon_key';
 const SUPABASE_SESSION_KEY='jdb_supabase_session';
 const SUPABASE_TABLE='storyboard_snapshots';
+const SUPABASE_VERSIONS_TABLE='storyboard_versions';
 const SUPABASE_ROW_ID='default';
 const SUPABASE_STORAGE_BUCKET='storyboard-media';
 const AUDIO_DB='jdb_audio_store';
@@ -1704,15 +1709,80 @@ async function loadSharedBoardsFromSupabase({silent=false,force=false}={}){
     return false;
   }
 }
-async function saveSharedBoardsToCloud(button){
+async function ensureCloudSignedIn(){
+  if(!cloudConfigured()){configureCloud();if(!cloudConfigured())return false;}
+  if(!getCloudSession()){await signInCloud();if(!getCloudSession())return false;}
+  await refreshCloudSession();
+  if(!getCloudSession()){await signInCloud();if(!getCloudSession())return false;}
+  return true;
+}
+async function saveVersionSnapshot(snapshot){
+  try{
+    const session=getCloudSession();
+    const versionId=SUPABASE_ROW_ID+'-'+snapshot.updatedAt;
+    const response=await fetchWithTimeout(getSupabaseUrl()+'/rest/v1/'+SUPABASE_VERSIONS_TABLE,{
+      method:'POST',
+      headers:{...cloudHeaders(true),Prefer:'return=minimal'},
+      body:JSON.stringify({
+        id:versionId,
+        snapshot_id:SUPABASE_ROW_ID,
+        data:snapshot,
+        created_at:new Date(snapshot.updatedAt).toISOString(),
+        created_by:session?.email||''
+      })
+    },9000);
+    return {ok:response.ok,missing:response.status===404};
+  }catch(e){
+    return {ok:false,missing:false};
+  }
+}
+async function fetchVersionSnapshots(){
+  if(!cloudConfigured())return [];
+  const response=await fetchWithTimeout(getSupabaseUrl()+'/rest/v1/'+SUPABASE_VERSIONS_TABLE+'?snapshot_id=eq.'+encodeURIComponent(SUPABASE_ROW_ID)+'&select=id,data,created_at,created_by&order=created_at.desc&limit=40',{
+    headers:cloudHeaders(false)
+  },9000);
+  if(!response.ok)throw new Error(response.status===404?'Run the latest supabase-schema.sql first.':'Could not load versions');
+  return await response.json();
+}
+async function revertToShared(){
   if(viewOnlyMode)return;
   if(!cloudConfigured()){configureCloud();if(!cloudConfigured())return;}
-  if(!getCloudSession()){await signInCloud();if(!getCloudSession())return;}
-  await refreshCloudSession();
-  if(!getCloudSession()){await signInCloud();if(!getCloudSession())return;}
+  if(!confirm('Revert this browser to the latest shared version? Unsaved local edits will be replaced.'))return;
+  const loaded=await loadSharedBoardsFromSupabase({silent:false,force:true});
+  if(loaded)toast('Reverted to latest shared version');
+  else toast('Could not load latest shared version',3600);
+}
+async function openVersionHistory(){
+  if(viewOnlyMode)return;
+  if(!cloudConfigured()){configureCloud();if(!cloudConfigured())return;}
+  try{
+    const versions=await fetchVersionSnapshots();
+    if(!versions.length){toast('No saved versions yet');return;}
+    const lines=versions.map((version,index)=>{
+      const date=new Date(version.created_at||version.data?.updatedAt||Date.now()).toLocaleString();
+      const who=version.created_by?' · '+version.created_by:'';
+      const boards=version.data?.storyboards?.length?(' · '+version.data.storyboards.length+' board(s)'):'';
+      return (index+1)+'. '+date+who+boards;
+    });
+    const choice=prompt('Saved versions:\n\n'+lines.join('\n')+'\n\nType a number to restore that version locally:');
+    if(!choice)return;
+    const index=parseInt(choice,10)-1;
+    const picked=versions[index];
+    if(!picked?.data){toast('Version not found');return;}
+    if(!confirm('Restore this saved version locally? Click Save shared afterward if you want everyone to use it.'))return;
+    await applySharedSnapshot(picked.data,{silent:true});
+    toast('Version restored locally. Click Save shared to publish it.');
+  }catch(e){
+    toast(e.message||'Could not load versions',5200);
+  }
+}
+async function saveSharedBoardsToCloud(button){
+  if(viewOnlyMode)return;
+  if(!(await ensureCloudSignedIn()))return;
   button.disabled=true;button.textContent='Saving shared...';
   try{
     const snapshot=await collectSharedSnapshot();
+    let versionResult={ok:false,missing:false};
     let response=await fetch(getSupabaseUrl()+'/rest/v1/'+SUPABASE_TABLE,{
       method:'POST',
       headers:{...cloudHeaders(true),Prefer:'resolution=merge-duplicates,return=minimal'},
@@ -1747,9 +1817,12 @@ async function saveSharedBoardsToCloud(button){
       throw new Error(detail||('Shared save failed '+response.status));
       }
     }
+    versionResult=await saveVersionSnapshot(snapshot);
     localStorage.setItem(CLOUD_LOADED_KEY,String(snapshot.updatedAt));
     if(lastMediaSyncResult?.failed){
       toast(lastMediaSyncResult.errors?.[0]||('Shared saved, but '+lastMediaSyncResult.failed+' media file(s) could not upload'),7000);
+    }else if(!versionResult.ok){
+      toast(versionResult.missing?'Saved shared. Run latest supabase-schema.sql to enable versions.':'Saved shared. Version history did not save.',7000);
     }else{
       toast('Saved shared boards');
     }

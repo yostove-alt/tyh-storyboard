@@ -27,6 +27,29 @@ to authenticated
 using (true)
 with check (true);
 
+create table if not exists public.storyboard_versions (
+  id text primary key,
+  snapshot_id text not null default 'default',
+  data jsonb not null,
+  created_at timestamptz not null default now(),
+  created_by text
+);
+
+alter table public.storyboard_versions enable row level security;
+
+drop policy if exists "Anyone can read storyboard versions" on public.storyboard_versions;
+create policy "Anyone can read storyboard versions"
+on public.storyboard_versions
+for select
+using (true);
+
+drop policy if exists "Signed in users can save storyboard versions" on public.storyboard_versions;
+create policy "Signed in users can save storyboard versions"
+on public.storyboard_versions
+for insert
+to authenticated
+with check (true);
+
 insert into storage.buckets (id, name, public)
 values ('storyboard-media', 'storyboard-media', true)
 on conflict (id) do update set public = true;

@@ -203,6 +203,7 @@ body.mood-closed .mood-panel{display:none;}
 .mood-hdr h2{font-family:'DM Serif Display',serif;font-size:18px;line-height:1;}
 .mood-hdr span{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);}
 .mood-actions{display:flex;gap:5px;align-items:center;}
+.mood-actions .btn{white-space:nowrap;}
 .mood-rail{position:fixed;right:var(--mood-panel,310px);top:50%;transform:translateY(-50%);z-index:210;background:var(--accent);color:#fff;border:1px solid var(--accent);border-right:none;border-radius:8px 0 0 8px;padding:10px 7px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;writing-mode:vertical-rl;text-orientation:mixed;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.16);transition:right .25s;}
 .mood-rail:hover{background:#0F3828;}
 body.mood-closed .mood-rail{right:0;}
@@ -222,6 +223,9 @@ body.mood-closed .mood-rail{right:0;}
 .mood-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
 .mood-item{border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);overflow:hidden;position:relative;min-height:94px;display:flex;flex-direction:column;cursor:grab;}
 .mood-item.dragging{opacity:.45;}
+.mood-item.local-only{border-color:#C4952A;}
+.mood-cloud-badge{position:absolute;top:5px;left:5px;z-index:3;font-family:'DM Mono',monospace;font-size:8px;letter-spacing:.08em;text-transform:uppercase;background:rgba(196,149,42,.92);color:#fff;border-radius:4px;padding:2px 4px;}
+.mood-cloud-badge.cloud{background:rgba(42,92,63,.92);}
 .mood-item img,.mood-item video{width:100%;aspect-ratio:16/10;object-fit:cover;background:#050706;display:block;}
 .mood-card-note,.mood-card-link{padding:8px;font-size:12px;line-height:1.35;color:var(--text);word-break:break-word;min-height:62px;}
 .mood-card-link{min-height:92px;display:flex;flex-direction:column;gap:6px;background:linear-gradient(180deg,var(--surface-soft),var(--surface));}
@@ -370,6 +374,7 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
 .thumb-item{width:76px;height:50px;border:1px solid var(--border);border-radius:7px;overflow:hidden;background:#E6ECE2;cursor:pointer;padding:0;position:relative;flex:0 0 auto;opacity:.72;transition:opacity .15s,border-color .15s,box-shadow .15s,transform .15s;}
 .thumb-item:hover{opacity:1;transform:translateY(-1px);}
 .thumb-item.active{opacity:1;border-color:var(--accent);box-shadow:0 0 0 2px rgba(23,74,54,.18);}
+.thumb-item.local-only{border-color:#C4952A;}
 .thumb-item img,.thumb-item video{width:100%;height:100%;object-fit:cover;display:block;}
 .thumb-placeholder{cursor:default;display:flex;align-items:center;justify-content:center;color:var(--faint);opacity:.5;}
 .thumb-placeholder:hover{opacity:.5;transform:none;}
@@ -647,6 +652,7 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
         <span>Loose ideas</span>
       </div>
       <div class="mood-actions">
+        <button class="btn btn-sm" onclick="syncMediaButton(this)">Sync media</button>
         <button class="btn btn-sm" onclick="document.getElementById('moodFileInput').click()">Upload</button>
         <button class="btn btn-sm btn-ghost" onclick="toggleMoodPanel()">✕</button>
       </div>
@@ -960,6 +966,7 @@ let activeAgentProvider=loadAgentProvider();
 let slideshowState={playing:false,time:0,startedAt:0,startTime:0,raf:null,pxPerSec:42};
 let videoOverview=boardGet('jdb_video_overview')||'';
 let moodboard=loadMoodboard();
+let lastMediaSyncResult=null;
 syncOptionsFromScenes();
 applyViewerRatio();
 applyCardHeight();
@@ -1352,7 +1359,7 @@ function deleteStoryboard(id){
 
 // ── SHARED DATABASE SAVE ──
 async function collectSharedSnapshot(){
-  await syncLocalMediaToCloud();
+  await syncLocalMediaToCloud({notify:false});
   save();
   const boards={};
   for(const board of storyboards){
@@ -1452,6 +1459,17 @@ function cloudHeaders(auth=false){
 function isShareableMediaUrl(url){
   return /^https?:\/\//i.test(String(url||''));
 }
+function isLocalOnlyMedia(item){
+  return !!(item&&!item.kind&&!isShareableMediaUrl(item.url));
+}
+function mediaCloudCounts(){
+  const items=[...scenes.flatMap(scene=>scene.media||[]),...moodboard.filter(item=>item&&!item.kind)];
+  return {
+    total:items.length,
+    cloud:items.filter(item=>isShareableMediaUrl(item.url)).length,
+    local:items.filter(isLocalOnlyMedia).length
+  };
+}
 function cleanStorageName(name){
   const safe=String(name||'media').trim().replace(/[^a-zA-Z0-9._-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80);
   return safe||'media';
@@ -1517,8 +1535,13 @@ async function uploadStoredMediaItem(item,boardId=activeStoryboardId){
   if(item.storedId)item.storedId=mediaId;
   return true;
 }
-async function syncLocalMediaToCloud(){
-  if(!cloudConfigured()||!getCloudSession())return false;
+async function syncLocalMediaToCloud({notify=true}={}){
+  if(!cloudConfigured()||!getCloudSession()){
+    const counts=mediaCloudCounts();
+    lastMediaSyncResult={uploaded:0,failed:0,localOnly:counts.local,total:counts.total,configured:false};
+    if(notify&&counts.local)toast('Sign in to cloud before syncing '+counts.local+' local media file(s)',4200);
+    return lastMediaSyncResult;
+  }
   let changed=false,uploaded=0,failed=0;
   const syncItem=async item=>{
     try{
@@ -1530,9 +1553,14 @@ async function syncLocalMediaToCloud(){
   }
   for(const item of moodboard)await syncItem(item);
   if(changed){save();saveMoodboard();}
-  if(uploaded)toast('Uploaded '+uploaded+' media file(s) to Supabase Storage');
-  if(failed)toast(failed+' media upload(s) failed. Check Storage bucket setup.',4200);
-  return changed;
+  const counts=mediaCloudCounts();
+  lastMediaSyncResult={uploaded,failed,localOnly:counts.local,total:counts.total,configured:true};
+  if(notify){
+    if(uploaded)toast('Uploaded '+uploaded+' media file(s) to Supabase Storage');
+    if(failed||counts.local)toast((failed||counts.local)+' media file(s) still local-only. Check Storage bucket setup.',5200);
+    if(!uploaded&&!failed&&!counts.local)toast('All media is cloud-ready');
+  }
+  return lastMediaSyncResult;
 }
 function updateCloudStatus(){
   const el=document.getElementById('cloudStatus');
@@ -1630,7 +1658,11 @@ async function saveSharedBoardsToCloud(button){
       }
     }
     localStorage.setItem(CLOUD_LOADED_KEY,String(snapshot.updatedAt));
-    toast('Saved shared boards');
+    if(lastMediaSyncResult?.localOnly||lastMediaSyncResult?.failed){
+      toast('Shared saved, but '+(lastMediaSyncResult.localOnly||lastMediaSyncResult.failed)+' media file(s) are still local-only',5600);
+    }else{
+      toast('Saved shared boards');
+    }
     button.textContent='Shared saved';
   }catch(e){
     toast(e.message||'Could not save shared boards',4200);
@@ -3430,6 +3462,7 @@ function makeCard(scene){
       const btn=document.createElement('button');
       btn.type='button';
       btn.className='thumb-item'+(i===ci?' active':'');
+      btn.classList.toggle('local-only',isLocalOnlyMedia(m));
       btn.title=m.name||('Media '+(i+1));
       btn.onclick=e=>{e.stopPropagation();ci=i;rSw();};
       if(m.type==='video'){
@@ -3440,6 +3473,8 @@ function makeCard(scene){
         const img=document.createElement('img');img.src=m.url;img.alt='';
         btn.appendChild(img);
       }
+      const badge=document.createElement('span');badge.className='mood-cloud-badge'+(isShareableMediaUrl(m.url)?' cloud':'');badge.textContent=isShareableMediaUrl(m.url)?'Cloud':'Local';
+      btn.appendChild(badge);
       thumbStrip.appendChild(btn);
     });
   };
@@ -3757,6 +3792,7 @@ function renderMoodboard(){
   const renderItems=(items,grid)=>{
     items.forEach(item=>{
     const card=document.createElement('div');card.className='mood-item';card.draggable=true;
+    card.classList.toggle('local-only',isLocalOnlyMedia(item));
     card.ondragstart=e=>{moodDragId=item.id;card.classList.add('dragging');e.dataTransfer.effectAllowed='copy';};
     card.ondragend=()=>{moodDragId=null;card.classList.remove('dragging');document.querySelectorAll('.scene-card').forEach(c=>c.classList.remove('mood-drop-target'));};
     if(item.kind==='note'){
@@ -3771,6 +3807,10 @@ function renderMoodboard(){
       const v=document.createElement('video');v.src=item.url;v.muted=true;v.preload='metadata';card.appendChild(v);card.onclick=()=>openLB([item],0,mediaLabel(item));
     }else{
       const img=document.createElement('img');img.src=item.url;img.alt='';card.appendChild(img);card.onclick=()=>openLB([item],0,mediaLabel(item));
+    }
+    if(!item.kind){
+      const badge=document.createElement('div');badge.className='mood-cloud-badge'+(isShareableMediaUrl(item.url)?' cloud':'');badge.textContent=isShareableMediaUrl(item.url)?'Cloud':'Local';
+      card.appendChild(badge);
     }
     const bar=document.createElement('div');bar.className='mood-item-bar';
     const name=document.createElement('span');name.className='mood-item-name';name.textContent=mediaLabel(item);
@@ -3793,6 +3833,16 @@ function addMoodFiles(files){
 function handleMoodFiles(e){
   addMoodFiles(Array.from(e.target.files||[]));
   e.target.value='';
+}
+async function syncMediaButton(button){
+  const old=button.textContent;
+  button.disabled=true;button.textContent='Syncing...';
+  try{
+    await syncLocalMediaToCloud({notify:true});
+    renderMoodboard();render();
+  }finally{
+    button.disabled=false;button.textContent=old;
+  }
 }
 
 // LIGHTBOX

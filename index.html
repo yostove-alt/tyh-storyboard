@@ -304,7 +304,9 @@ body.mood-closed .mood-rail{right:0;}
 .script-act-name:hover,.asset-section-name:hover{border-color:var(--border);background:var(--surface);}
 .script-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;}
 .asset-browser{display:grid;grid-template-columns:270px minmax(0,1fr);gap:14px;align-items:start;}
-.asset-sidebar{border:1px solid var(--border);border-radius:var(--r);background:var(--surface);padding:8px;display:flex;flex-direction:column;gap:8px;max-height:76vh;overflow:auto;}
+.asset-sidebar{border:1px solid var(--border);border-radius:var(--r);background:var(--surface);padding:8px;display:flex;flex-direction:column;gap:8px;overflow:auto;}
+.asset-search{width:100%;border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);font-family:'Instrument Sans',sans-serif;font-size:13px;padding:8px 9px;outline:none;}
+.asset-search:focus{border-color:var(--accent);background:var(--accent-l);}
 .asset-thumb-card{border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);padding:7px;display:grid;grid-template-columns:58px minmax(0,1fr);gap:8px;text-align:left;cursor:pointer;color:var(--text);}
 .asset-thumb-card.active{border-color:var(--accent);background:var(--accent-l);box-shadow:0 0 0 2px rgba(23,74,54,.12);}
 .asset-thumb-media{width:58px;aspect-ratio:1/1;border:1px solid var(--border);border-radius:7px;background:#050706;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--faint);font-family:'DM Mono',monospace;font-size:10px;}
@@ -672,11 +674,11 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
   <div class="divider" style="margin-left:auto;"></div>
   <span class="toolbar-label">View</span>
   <div class="sort-group view-group">
+    <button class="sort-btn" id="viewScriptBtn" onclick="setBoardView('script')">Script</button>
+    <button class="sort-btn" id="viewAssetsBtn" onclick="setBoardView('assets')">Assets</button>
     <button class="sort-btn" id="viewStoryBtn" onclick="setBoardView('story')">Story</button>
     <button class="sort-btn active" id="viewCardsBtn" onclick="setBoardView('cards')">Cards</button>
     <button class="sort-btn" id="viewSlideshowBtn" onclick="setBoardView('slideshow')">Animatic</button>
-    <button class="sort-btn" id="viewScriptBtn" onclick="setBoardView('script')">Script</button>
-    <button class="sort-btn" id="viewAssetsBtn" onclick="setBoardView('assets')">Assets</button>
   </div>
   <div class="divider"></div>
   <span class="toolbar-label">Group by</span>
@@ -772,6 +774,13 @@ const DEFAULT_STATUSES=['Not shot','Scheduled','Shot ✓','Locked'];
 const STATUS_COLORS={'Not shot':'#B0A898','Scheduled':'#C4952A','Shot ✓':'#2A5C3F','Locked':'#7A5C3F'};
 const REMOVED_FIELD_KEYS=['locationDetail'];
 const DEFAULT_CAMS=['Cam A — Moti','Cam B — Elmelech','Both','BTS'];
+const DEFAULT_BOARD_VIEWS=[
+  {key:'script',label:'Script',visible:true},
+  {key:'assets',label:'Assets',visible:true},
+  {key:'story',label:'Story',visible:true},
+  {key:'cards',label:'Cards',visible:true},
+  {key:'slideshow',label:'Animatic',visible:true}
+];
 const FIELD_DEFAULTS=[
   {key:'lyrics',label:'Lyrics',visible:true,defaultOpen:true,kind:'lyrics'},
   {key:'shots',label:'Key shots',visible:true,defaultOpen:true,kind:'shots'},
@@ -785,7 +794,7 @@ const ACTIVE_STORYBOARD_KEY='jdb_active_storyboard';
 const LAST_SCREEN_KEY='jdb_last_screen';
 const MOOD_PANEL_OPEN_KEY='jdb_mood_panel_open';
 const MOOD_PANEL_WIDTH_KEY='jdb_mood_panel_width';
-const LEGACY_BOARD_KEYS=['jdb_v4','jdb_field_settings','jdb_acts','jdb_locations','jdb_statuses','jdb_cameras','jdb_viewer_ratio','jdb_card_height','jdb_song_info','jdb_audio_name','jdb_slideshow_overrides','jdb_video_overview','jdb_moodboard','jdb_script','jdb_assets'];
+const LEGACY_BOARD_KEYS=['jdb_v4','jdb_field_settings','jdb_acts','jdb_locations','jdb_statuses','jdb_cameras','jdb_viewer_ratio','jdb_card_height','jdb_song_info','jdb_audio_name','jdb_slideshow_overrides','jdb_video_overview','jdb_moodboard','jdb_script','jdb_assets','jdb_board_view','jdb_view_settings'];
 const DEFAULT_SUPABASE_URL='';
 const DEFAULT_SUPABASE_ANON_KEY='';
 const CLOUD_PATH='data/boards.json';
@@ -1026,6 +1035,8 @@ function seedNewStoryboard(id,name){
   localStorage.setItem(boardKey('jdb_song_info',id),JSON.stringify({title:name,artist:'',lyrics:''}));
   localStorage.setItem(boardKey('jdb_script',id),JSON.stringify(defaultScriptData()));
   localStorage.setItem(boardKey('jdb_assets',id),JSON.stringify(defaultAssetsData()));
+  localStorage.setItem(boardKey('jdb_view_settings',id),JSON.stringify(DEFAULT_BOARD_VIEWS));
+  localStorage.setItem(boardKey('jdb_board_view',id),'script');
 }
 
 let scenes=restoreMissingStarterLyrics(loadScenes());
@@ -1040,7 +1051,8 @@ let panelOpen=localStorage.getItem(PANEL_OPEN_KEY)!=='false';
 let moodPanelOpen=localStorage.getItem(MOOD_PANEL_OPEN_KEY)!=='false';
 let moodPanelWidth=parseInt(localStorage.getItem(MOOD_PANEL_WIDTH_KEY)||'310',10);
 let activeTab='agent';
-let boardView='cards';
+let viewSettings=loadViewSettings();
+let boardView=loadBoardView();
 let sortField='scene';let sortDir=1;
 let compose=blankCompose();
 let lbMedia=[];let lbIdx=0;
@@ -1051,6 +1063,8 @@ let setupDrag=null;
 let selectedAssetIds={};
 let assetTagFilter='';
 let assetsGroupByTag=false;
+let assetSearchTerms={};
+let assetSearchTimer=null;
 let swiperControllers=new Map();
 let currentPlaybackSceneId=null;
 let currentPlaybackStart=null;
@@ -1156,17 +1170,18 @@ function saveScriptData(){
   boardSet('jdb_script',JSON.stringify(localScriptRecord(scriptData)));
   touchStoryboard();
 }
-const ASSET_STATUSES=['Task','Approved','Needs revision'];
+const ASSET_STATUSES=['Assigned','Approved','Needs revision'];
 function defaultAssetsData(){
   return {
     sections:['Characters','Props','Locations'].map(name=>({
       id:newMediaId(),
       name,
-      cards:[{id:newMediaId(),title:'',status:'Task',notes:'',references:[],finals:[]}]
+      cards:[{id:newMediaId(),title:'',status:'Assigned',notes:'',references:[],finals:[]}]
     }))
   };
 }
 function normalizeAssetStatus(status){
+  if(String(status||'').toLowerCase()==='task')return 'Assigned';
   const found=ASSET_STATUSES.find(item=>item.toLowerCase()===String(status||'').toLowerCase());
   return found||ASSET_STATUSES[0];
 }
@@ -1181,7 +1196,7 @@ function normalizeAssetsData(data){
     sections:sections.map((section,index)=>({
       id:section.id||newMediaId(),
       name:section.name||(['Characters','Props','Locations'][index]||('Section '+(index+1))),
-      cards:(Array.isArray(section.cards)&&section.cards.length?section.cards:[{id:newMediaId(),title:'',status:'Task',notes:'',references:[],finals:[]}]).map(card=>({
+      cards:(Array.isArray(section.cards)&&section.cards.length?section.cards:[{id:newMediaId(),title:'',status:'Assigned',notes:'',references:[],finals:[]}]).map(card=>({
         id:card.id||newMediaId(),
         title:String(card.title||''),
         status:normalizeAssetStatus(card.status),
@@ -1232,6 +1247,41 @@ function saveAssetsData(){
   assetsData=normalizeAssetsData(assetsData);
   boardSet('jdb_assets',JSON.stringify(localAssetsRecord(assetsData)));
   touchStoryboard();
+}
+function normalizeViewSettings(value){
+  let parsed=[];
+  try{parsed=Array.isArray(value)?value:JSON.parse(value||'[]');}catch(e){}
+  const byKey=new Map((Array.isArray(parsed)?parsed:[]).map(item=>[item.key,item]));
+  const ordered=(Array.isArray(parsed)?parsed:[])
+    .filter(item=>DEFAULT_BOARD_VIEWS.some(view=>view.key===item.key))
+    .map(item=>({
+      key:item.key,
+      label:DEFAULT_BOARD_VIEWS.find(view=>view.key===item.key)?.label||item.label||item.key,
+      visible:item.visible!==false
+    }));
+  DEFAULT_BOARD_VIEWS.forEach(view=>{if(!ordered.some(item=>item.key===view.key))ordered.push({...view,visible:byKey.get(view.key)?.visible!==false});});
+  return ordered;
+}
+function loadViewSettings(){
+  return normalizeViewSettings(boardGet('jdb_view_settings'));
+}
+function saveViewSettings(){
+  viewSettings=normalizeViewSettings(viewSettings);
+  boardSet('jdb_view_settings',JSON.stringify(viewSettings));
+  touchStoryboard();
+}
+function visibleBoardViews(){
+  return viewSettings.filter(view=>view.visible!==false);
+}
+function firstVisibleBoardView(){
+  return visibleBoardViews()[0]?.key||'script';
+}
+function loadBoardView(){
+  const saved=boardGet('jdb_board_view')||firstVisibleBoardView();
+  return visibleBoardViews().some(view=>view.key===saved)?saved:firstVisibleBoardView();
+}
+function saveBoardView(){
+  boardSet('jdb_board_view',boardView);
 }
 function localMoodRecord(item){
   if(!item)return null;
@@ -1532,6 +1582,8 @@ function reloadBoardState(){
   moodboard=loadMoodboard();
   scriptData=loadScriptData();
   assetsData=loadAssetsData();
+  viewSettings=loadViewSettings();
+  boardView=loadBoardView();
   chatMessages=[{role:'assistant',text:'Board ready.'}];
   claudeMessages=[{role:'assistant',text:'Claude board chat ready.'}];
   syncOptionsFromScenes();
@@ -2969,6 +3021,7 @@ function extractClaudeText(data){
 function renderFieldsPanel(b){
   const w=document.createElement('div');w.className='field-settings';
   renderViewerSettings(w);
+  renderViewSettings(w);
   const fieldTitle=document.createElement('div');fieldTitle.className='settings-title';fieldTitle.textContent='Card sections';w.appendChild(fieldTitle);
   const hdr=document.createElement('div');hdr.className='field-row-ctl';hdr.style.background='transparent';hdr.style.border='none';hdr.style.padding='0 9px';
   hdr.innerHTML='<div></div><div class="field-ctl-key">Section</div><div class="field-ctl-key" style="text-align:center;">Show</div><div class="field-ctl-key" style="text-align:center;">Open</div><div></div>';
@@ -3027,6 +3080,30 @@ function renderViewerSettings(w){
   const height=document.createElement('input');height.id='cardHeightInput';height.type='number';height.min='520';height.max='960';height.step='20';height.value=cardHeight;
   height.onchange=()=>{saveCardHeight(height.value);render();toast('Card height set to '+cardHeight+'px');};
   hrow.appendChild(hlabel);hrow.appendChild(height);w.appendChild(hrow);
+}
+function renderViewSettings(w){
+  const title=document.createElement('div');title.className='settings-title';title.textContent='Board views';w.appendChild(title);
+  viewSettings.forEach((view,idx)=>{
+    const row=document.createElement('div');row.className='field-row-ctl';
+    row.style.gridTemplateColumns='auto minmax(0,1fr) auto';
+    enableSetupDrop(row,'view',idx,reorderView);
+    const drag=makeSetupDragHandle('view','view',idx);
+    const meta=document.createElement('div');
+    const name=document.createElement('div');name.className='field-name-input';name.style.display='flex';name.style.alignItems='center';name.textContent=view.label;
+    const key=document.createElement('div');key.className='field-ctl-key';key.textContent=view.key==='slideshow'?'animatic view':'board view';
+    meta.appendChild(name);meta.appendChild(key);
+    const show=document.createElement('label');show.className='field-check';
+    const showCb=document.createElement('input');showCb.type='checkbox';showCb.checked=view.visible!==false;
+    showCb.onchange=()=>{
+      view.visible=showCb.checked;
+      if(!visibleBoardViews().length)view.visible=true;
+      if(view.key===boardView&&view.visible===false)boardView=firstVisibleBoardView();
+      saveViewSettings();saveBoardView();renderPanel();render();
+    };
+    show.appendChild(showCb);show.appendChild(document.createTextNode('Show'));
+    row.appendChild(drag);row.appendChild(meta);row.appendChild(show);
+    w.appendChild(row);
+  });
 }
 
 function renameField(key,label){
@@ -3090,6 +3167,10 @@ function reorderList(list,from,to){
 function reorderField(from,to){
   if(!reorderList(fieldSettings,from,to))return;
   saveFieldSettings();renderPanel();render();toast('Section moved');
+}
+function reorderView(from,to){
+  if(!reorderList(viewSettings,from,to))return;
+  saveViewSettings();renderPanel();render();toast('View moved');
 }
 function reorderOption(type,from,to){
   const list=optionList(type);
@@ -3308,13 +3389,27 @@ function setSort(field){
 // ── BOARD ──
 let groupBy='act';
 function setBoardView(view){
-  boardView=view==='story'||view==='slideshow'||view==='script'||view==='assets'?view:'cards';
-  document.getElementById('viewScriptBtn').classList.toggle('active',boardView==='script');
-  document.getElementById('viewAssetsBtn').classList.toggle('active',boardView==='assets');
-  document.getElementById('viewCardsBtn').classList.toggle('active',boardView==='cards');
-  document.getElementById('viewStoryBtn').classList.toggle('active',boardView==='story');
-  document.getElementById('viewSlideshowBtn').classList.toggle('active',boardView==='slideshow');
+  boardView=visibleBoardViews().some(item=>item.key===view)?view:firstVisibleBoardView();
+  saveBoardView();
   render();
+}
+function viewButtonId(key){
+  return key==='slideshow'?'viewSlideshowBtn':'view'+key.charAt(0).toUpperCase()+key.slice(1)+'Btn';
+}
+function applyViewToolbar(){
+  const group=document.querySelector('.view-group');
+  if(!group)return;
+  viewSettings.forEach(view=>{
+    const btn=document.getElementById(viewButtonId(view.key));
+    if(!btn)return;
+    group.appendChild(btn);
+    btn.style.display=view.visible===false?'none':'';
+    btn.classList.toggle('active',boardView===view.key);
+  });
+  if(!visibleBoardViews().some(view=>view.key===boardView)){
+    boardView=firstVisibleBoardView();
+    saveBoardView();
+  }
 }
 function setGroup(field){
   groupBy=field;
@@ -3412,7 +3507,7 @@ function renderScriptView(board){
 }
 function addAssetSection(){
   if(viewOnlyMode)return;
-  assetsData.sections.push({id:newMediaId(),name:'New section',cards:[{id:newMediaId(),title:'',status:'Task',notes:'',tags:[],references:[],finals:[]}]});
+  assetsData.sections.push({id:newMediaId(),name:'New section',cards:[{id:newMediaId(),title:'',status:'Assigned',notes:'',tags:[],references:[],finals:[]}]});
   saveAssetsData();render();toast('Asset section added');
 }
 function renameAssetSection(section){
@@ -3423,7 +3518,7 @@ function renameAssetSection(section){
 }
 function addAssetCard(section){
   if(viewOnlyMode)return;
-  const card={id:newMediaId(),title:'',status:'Task',notes:'',tags:[],references:[],finals:[]};
+  const card={id:newMediaId(),title:'',status:'Assigned',notes:'',tags:[],references:[],finals:[]};
   section.cards.push(card);
   selectedAssetIds[section.id]=card.id;
   saveAssetsData();render();
@@ -3497,6 +3592,12 @@ function assetAllTags(){
 function assetCardMatchesFilter(card){
   return !assetTagFilter||(card.tags||[]).includes(assetTagFilter);
 }
+function assetCardMatchesSearch(card,term){
+  const q=String(term||'').toLowerCase().trim();
+  if(!q)return true;
+  const haystack=[card.title,card.status,card.notes,...(card.tags||[])].join(' ').toLowerCase();
+  return haystack.includes(q);
+}
 function assetCardThumbMedia(card){
   return (card.finals&&card.finals[0])||(card.references&&card.references[0])||null;
 }
@@ -3524,6 +3625,14 @@ function renderAssetThumb(card,section){
 }
 function renderAssetSidebar(section,cards){
   const sidebar=document.createElement('div');sidebar.className='asset-sidebar';
+  const search=document.createElement('input');search.className='asset-search';search.placeholder='Search '+(section.name||'assets');
+  search.value=assetSearchTerms[section.id]||'';
+  search.oninput=()=>{
+    assetSearchTerms[section.id]=search.value;
+    clearTimeout(assetSearchTimer);
+    assetSearchTimer=setTimeout(render,180);
+  };
+  sidebar.appendChild(search);
   if(!cards.length){
     const empty=document.createElement('div');empty.className='asset-preview-empty';empty.textContent='No assets match this tag';sidebar.appendChild(empty);return sidebar;
   }
@@ -3546,6 +3655,23 @@ function renderAssetSidebar(section,cards){
   }
   return sidebar;
 }
+function syncAssetSidebarHeights(root=document){
+  root.querySelectorAll('.asset-browser').forEach(browser=>{
+    const sidebar=browser.querySelector('.asset-sidebar');
+    const detail=browser.querySelector('.asset-detail');
+    if(!sidebar||!detail)return;
+    if(window.matchMedia('(max-width:700px)').matches){
+      sidebar.style.height='';
+      sidebar.style.maxHeight='';
+      return;
+    }
+    const height=detail.offsetHeight;
+    if(height>0){
+      sidebar.style.height=height+'px';
+      sidebar.style.maxHeight=height+'px';
+    }
+  });
+}
 function renderAssetDetail(section,card){
   const detail=document.createElement('div');detail.className='asset-detail';
   if(!card){
@@ -3553,7 +3679,20 @@ function renderAssetDetail(section,card){
   }
   const cardEl=document.createElement('article');cardEl.className='asset-card';
   const title=document.createElement('input');title.placeholder='Asset title';title.value=card.title||'';title.disabled=viewOnlyMode;
-  title.oninput=()=>{card.title=title.value;saveAssetsData();};
+  let titleSaveTimer=null;
+  const commitTitle=shouldRender=>{
+    clearTimeout(titleSaveTimer);
+    card.title=title.value;
+    saveAssetsData();
+    if(shouldRender)render();
+  };
+  title.oninput=()=>{
+    card.title=title.value;
+    clearTimeout(titleSaveTimer);
+    titleSaveTimer=setTimeout(()=>saveAssetsData(),450);
+  };
+  title.onchange=()=>commitTitle(true);
+  title.onblur=()=>commitTitle(true);
   const status=document.createElement('select');status.disabled=viewOnlyMode;
   ASSET_STATUSES.forEach(value=>{const option=document.createElement('option');option.value=value;option.textContent=value;status.appendChild(option);});
   status.value=normalizeAssetStatus(card.status);
@@ -3599,18 +3738,21 @@ function renderAssetsView(board){
       const add=document.createElement('button');add.className='btn btn-sm';add.textContent='+ Asset';add.onclick=()=>addAssetCard(section);hdr.appendChild(add);
     }
     sectionEl.appendChild(hdr);
-    const cards=(section.cards||[]).filter(assetCardMatchesFilter);
+    const searchTerm=assetSearchTerms[section.id]||'';
+    const cards=(section.cards||[]).filter(card=>assetCardMatchesFilter(card)&&assetCardMatchesSearch(card,searchTerm));
     if(!cards.some(card=>card.id===selectedAssetIds[section.id]))selectedAssetIds[section.id]=cards[0]?.id||section.cards?.[0]?.id||'';
     const selected=(section.cards||[]).find(card=>card.id===selectedAssetIds[section.id]);
     const browser=document.createElement('div');browser.className='asset-browser';
     browser.appendChild(renderAssetSidebar(section,cards));
-    browser.appendChild(renderAssetDetail(section,selected&&assetCardMatchesFilter(selected)?selected:cards[0]));
+    browser.appendChild(renderAssetDetail(section,selected&&assetCardMatchesFilter(selected)&&assetCardMatchesSearch(selected,searchTerm)?selected:cards[0]));
     sectionEl.appendChild(browser);wrap.appendChild(sectionEl);
   });
   if(!viewOnlyMode){
     const addSection=document.createElement('button');addSection.className='btn btn-primary';addSection.textContent='+ Add section';addSection.onclick=addAssetSection;wrap.appendChild(addSection);
   }
   board.appendChild(wrap);
+  requestAnimationFrame(()=>syncAssetSidebarHeights(board));
+  setTimeout(()=>syncAssetSidebarHeights(board),300);
 }
 
 function getGroupValue(scene,field){
@@ -3640,11 +3782,7 @@ function render(){
   selectedSceneIds=new Set([...selectedSceneIds].filter(id=>scenes.some(scene=>scene.id===id)));
   renderSelectionBar();
   refreshFilterOptions();
-  document.getElementById('viewScriptBtn').classList.toggle('active',boardView==='script');
-  document.getElementById('viewAssetsBtn').classList.toggle('active',boardView==='assets');
-  document.getElementById('viewCardsBtn').classList.toggle('active',boardView==='cards');
-  document.getElementById('viewStoryBtn').classList.toggle('active',boardView==='story');
-  document.getElementById('viewSlideshowBtn').classList.toggle('active',boardView==='slideshow');
+  applyViewToolbar();
   const board=document.getElementById('board');board.innerHTML='';
   if(boardView==='script'){
     renderScriptView(board);
@@ -4804,6 +4942,7 @@ function handleImport(e){const f=e.target.files[0];if(!f)return;const r=new File
 
 document.body.classList.toggle('view-only',viewOnlyMode);
 render();
+window.addEventListener('resize',()=>{if(boardView==='assets')syncAssetSidebarHeights(document);});
 setPanel(panelOpen);
 setMoodPanelWidth(moodPanelWidth);
 setMoodPanel(moodPanelOpen);

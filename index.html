@@ -1127,6 +1127,39 @@ const SCRIPT_TEMPLATES=[
     ]
   },
   {
+    id:'animated-short-3-5',
+    name:'3.5-minute animated short',
+    storyPrompt:'One character, one goal, one conflict, one emotional payoff.\n\nOne-sentence premise:\nWho is it about?\nWhat do they want?\nWhat gets in their way?\nWhat is the emotional payoff?',
+    acts:[
+      {name:'3.5-Minute Short',cards:[
+        {title:'Hook (0:00-0:20)',hint:'Immediately show the main character, main desire, and main problem. No exposition.\n\nExample: A tiny robot finds a flower growing in a junkyard.'},
+        {title:'Setup (0:20-0:50)',hint:'Show the character world. Establish what they want and why it matters.\n\nExample: The robot protects the flower from the harsh environment.'},
+        {title:'Rising Action (0:50-1:40)',hint:'The character takes action. Introduce obstacles, with each obstacle getting harder.\n\nExamples:\nWind threatens the flower.\nLarger robots ignore it.\nThe flower begins to wilt.'},
+        {title:'Complication / Twist (1:40-2:20)',hint:'Something changes. The original plan no longer works. This is usually the emotional turning point.\n\nExample: A scrap collector arrives and starts tearing apart the junkyard.'},
+        {title:'Climax (2:20-3:00)',hint:'Fast-paced final attempt. Everything is on the line.\n\nExample: The robot risks being destroyed to save the flower.'},
+        {title:'Resolution (3:00-3:20)',hint:'Show the outcome. Answer the emotional question.\n\nExample: The flower survives.'},
+        {title:'Final Image (3:20-3:30)',hint:'One memorable visual. Cut to black.\n\nExample: The flower blooms from the robot broken body.'}
+      ]}
+    ]
+  },
+  {
+    id:'animated-short-5',
+    name:'5-minute animated short',
+    storyPrompt:'Who is the story about?\nWhat do they want?\nWhat gets in their way?\nHow do they change?\n\nOptional AI breakdown:\nLogline:\nTheme:\nEmotional arc:',
+    acts:[
+      {name:'5-Minute Short',cards:[
+        {title:'Hook (0:00-0:30)',hint:'Who is the character? Why should we care? Start with an immediate visual/emotional reason to watch.'},
+        {title:'Setup (0:30-1:15)',hint:'Establish the goal, world, and stakes. Make the want clear and simple.'},
+        {title:'Inciting Incident (1:15-1:45)',hint:'Something changes. The story begins. The character is pushed into action.'},
+        {title:'Escalation (1:45-3:00)',hint:'Attempts, failures, and progress. The character tries to solve the problem and the situation grows.'},
+        {title:'Midpoint (3:00-3:30)',hint:'A revelation or major turn. The character sees the problem differently, or the stakes shift.'},
+        {title:'Complication (3:30-4:15)',hint:'Things get worse. The character must change, not just try harder.'},
+        {title:'Climax (4:15-4:45)',hint:'Big emotional or visual payoff. The character makes the decisive choice.'},
+        {title:'Resolution / Final Image (4:45-5:00)',hint:'Answer the story question and leave one memorable final image.'}
+      ]}
+    ]
+  },
+  {
     id:'classic-screenplay',
     name:'Classic screenplay',
     acts:[
@@ -1184,6 +1217,7 @@ const SCRIPT_TEMPLATES=[
 function defaultScriptData(){
   return {
     story:'',
+    storyPrompt:'',
     acts:[1,2,3].map(n=>({id:newMediaId(),name:'Act '+n,cards:[{id:newMediaId(),title:'',hint:'',text:'',media:[]}]}))
   };
 }
@@ -1192,6 +1226,7 @@ function normalizeScriptData(data){
   const acts=Array.isArray(base.acts)&&base.acts.length?base.acts:defaultScriptData().acts;
   return {
     story:String(base.story||''),
+    storyPrompt:String(base.storyPrompt||''),
     acts:acts.map((act,actIndex)=>({
       id:act.id||newMediaId(),
       name:act.name||('Act '+(actIndex+1)),
@@ -1253,6 +1288,7 @@ function normalizeScriptTemplate(template){
     id:String(template.id||('custom-'+Date.now())),
     name,
     custom:template.custom===true,
+    storyPrompt:String(template.storyPrompt||''),
     acts:template.acts.map((act,actIndex)=>({
       name:String(act.name||('Act '+(actIndex+1))),
       cards:(Array.isArray(act.cards)&&act.cards.length?act.cards:[{title:'',hint:''}]).map(card=>({
@@ -3599,6 +3635,7 @@ function applyScriptTemplate(templateId){
     name:act.name,
     cards:act.cards.map(card=>({id:newMediaId(),title:card.title||'',hint:card.hint||card.text||'',text:'',media:[]}))
   }));
+  scriptData.storyPrompt=template.storyPrompt||'';
   saveScriptData();render();toast('Template applied');
 }
 function saveCurrentScriptAsTemplate(){
@@ -3610,6 +3647,7 @@ function saveCurrentScriptAsTemplate(){
     id:'custom-'+Date.now(),
     name,
     custom:true,
+    storyPrompt:scriptData.story||'',
     acts:scriptData.acts.map((act,actIndex)=>({
       name:act.name||('Act '+(actIndex+1)),
       cards:(act.cards||[]).map(card=>({
@@ -3626,7 +3664,7 @@ function renderScriptView(board){
   const wrap=document.createElement('div');wrap.className='script-wrap';
   const story=document.createElement('div');story.className='script-story';
   const label=document.createElement('div');label.className='script-label';label.textContent='Story';
-  const storyText=document.createElement('textarea');storyText.placeholder='Core idea of the film...';storyText.value=scriptData.story||'';storyText.disabled=viewOnlyMode;
+  const storyText=document.createElement('textarea');storyText.placeholder=scriptData.storyPrompt||'Core idea of the film...';storyText.value=scriptData.story||'';storyText.disabled=viewOnlyMode;
   storyText.oninput=()=>{scriptData.story=storyText.value;saveScriptData();};
   story.appendChild(label);story.appendChild(storyText);wrap.appendChild(story);
   if(!viewOnlyMode){

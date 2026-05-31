@@ -489,9 +489,9 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
 .section-body.collapsed{display:none;}
 
 /* Lyrics */
-.lyrics-block{font-size:12px;font-style:italic;color:var(--muted);line-height:1.6;background:var(--surface-soft);border-radius:var(--rs);padding:7px 9px;cursor:pointer;border:1px solid transparent;white-space:pre-line;min-height:26px;}
+.lyrics-block{font-size:12px;font-style:italic;color:var(--muted);line-height:1.6;background:var(--surface-soft);border-radius:var(--rs);padding:7px 9px;cursor:text;border:1px solid transparent;white-space:pre-line;min-height:26px;user-select:text;}
 .lyrics-block:hover{border-color:var(--border);}
-.lyrics-ta{font-size:12px;font-style:italic;color:var(--muted);line-height:1.6;background:var(--accent-l);border:1px solid var(--accent);border-radius:var(--rs);padding:6px 9px;width:100%;resize:vertical;outline:none;min-height:56px;font-family:'Instrument Sans',sans-serif;}
+.lyrics-ta{font-size:12px;font-style:italic;color:var(--muted);line-height:1.6;background:var(--accent-l);border:1px solid var(--accent);border-radius:var(--rs);padding:6px 9px;width:100%;resize:vertical;outline:none;min-height:96px;font-family:'Instrument Sans',sans-serif;overflow:auto;}
 
 /* Shots */
 .shot-list{display:flex;flex-direction:column;gap:3px;}
@@ -4699,7 +4699,11 @@ function makeCard(scene){
       if(field.kind==='lyrics'){
         const lyrEl=document.createElement('div');lyrEl.className='lyrics-block';
         renderLyricLines(lyrEl,scene);
-        lyrEl.onclick=()=>iEditTA(scene.id,'lyrics',lyrEl,'lyrics-ta');sb.appendChild(lyrEl);
+        lyrEl.onclick=()=>{
+          if(String(window.getSelection&&window.getSelection()||'').trim())return;
+          iEditTA(scene.id,'lyrics',lyrEl,'lyrics-ta');
+        };
+        sb.appendChild(lyrEl);
       } else if(field.kind==='shots'){
         const sl=document.createElement('div');sl.className='shot-list';
         (scene.shots||[]).forEach((sh,i)=>{
@@ -4746,7 +4750,35 @@ function renderLyricLines(container,scene){
 // INLINE EDITS
 function iEdit(id,key,el,cls){if(viewOnlyMode)return;const s=scenes.find(s=>s.id===id);const inp=document.createElement('input');inp.type='text';inp.className=cls;inp.value=s[key];el.replaceWith(inp);inp.focus();inp.select();const done=()=>{s[key]=inp.value||s[key];save();render();};inp.onblur=done;inp.onkeydown=e=>{if(e.key==='Enter')done();if(e.key==='Escape')render();};}
 function iEditTime(id,el){if(viewOnlyMode)return;const s=scenes.find(s=>s.id===id);const inp=document.createElement('input');inp.className='time-inp';inp.value=s.time;el.replaceWith(inp);inp.focus();inp.select();const done=()=>{s.time=inp.value;save();render();};inp.onblur=done;inp.onkeydown=e=>{if(e.key==='Enter')done();if(e.key==='Escape')render();};}
-function iEditTA(id,key,el,cls){if(viewOnlyMode)return;const s=scenes.find(s=>s.id===id);const ta=document.createElement('textarea');ta.className=cls;ta.value=s[key]||'';el.replaceWith(ta);ta.focus();const done=()=>{s[key]=ta.value;save();render();};ta.onblur=done;ta.onkeydown=e=>{if(e.key==='Escape')done();};}
+function iEditTA(id,key,el,cls){
+  if(viewOnlyMode)return;
+  const s=scenes.find(s=>s.id===id);
+  const rect=el.getBoundingClientRect();
+  const ta=document.createElement('textarea');
+  ta.className=cls;
+  ta.value=s[key]||'';
+  const minHeight=Math.max(rect.height||0,cls==='lyrics-ta'?96:0);
+  if(minHeight)ta.style.minHeight=Math.ceil(minHeight)+'px';
+  el.replaceWith(ta);
+  const fit=()=>{
+    const current=parseFloat(ta.style.height)||ta.offsetHeight||0;
+    ta.style.height='auto';
+    ta.style.height=Math.max(current,minHeight,ta.scrollHeight)+'px';
+  };
+  fit();
+  ta.focus({preventScroll:true});
+  requestAnimationFrame(()=>{ta.scrollTop=0;fit();});
+  let doneOnce=false;
+  const done=()=>{
+    if(doneOnce)return;
+    doneOnce=true;
+    s[key]=ta.value;
+    save();render();
+  };
+  ta.oninput=fit;
+  ta.onblur=done;
+  ta.onkeydown=e=>{if(e.key==='Escape')done();};
+}
 function iEditShot(id,idx,el){if(viewOnlyMode)return;const s=scenes.find(s=>s.id===id);const inp=document.createElement('input');inp.className='shot-inp';inp.value=s.shots[idx];el.replaceWith(inp);inp.focus();inp.select();const done=()=>{s.shots[idx]=inp.value||s.shots[idx];save();render();};inp.onblur=done;inp.onkeydown=e=>{if(e.key==='Enter')done();if(e.key==='Escape')render();};}
 function iEditLoc(id,el){
   if(viewOnlyMode)return;

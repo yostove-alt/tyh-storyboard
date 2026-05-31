@@ -1814,6 +1814,13 @@ function cleanStorageName(name){
 function fileExt(name){
   return (String(name||'').split('.').pop()||'').toLowerCase();
 }
+function isHeicFile(file){
+  return /\.hei[cf]$/i.test(file?.name||'')||/^image\/hei[cf]$/i.test(file?.type||'');
+}
+function jpegNameForHeic(name){
+  const base=String(name||'image.heic').replace(/\.[^.]+$/,'')||'image';
+  return base+'.jpg';
+}
 function mimeFromName(name){
   const ext=fileExt(name);
   if(ext==='heic')return 'image/heic';
@@ -1836,6 +1843,28 @@ function mediaKindForFile(file){
 }
 function browserCanPreviewHeic(file){
   return !/\.hei[cf]$/i.test(file.name)||/Safari/i.test(navigator.userAgent)&&!/Chrome|Chromium|CriOS/i.test(navigator.userAgent);
+}
+let heicConverterPromise=null;
+function loadHeicConverter(){
+  if(window.heic2any)return Promise.resolve(window.heic2any);
+  if(heicConverterPromise)return heicConverterPromise;
+  heicConverterPromise=new Promise((resolve,reject)=>{
+    const script=document.createElement('script');
+    script.src='https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
+    script.async=true;
+    script.onload=()=>window.heic2any?resolve(window.heic2any):reject(new Error('HEIC converter did not load'));
+    script.onerror=()=>reject(new Error('HEIC converter failed to load'));
+    document.head.appendChild(script);
+  });
+  return heicConverterPromise;
+}
+async function convertHeicToJpeg(file){
+  if(!isHeicFile(file))return file;
+  const heic2any=await loadHeicConverter();
+  const converted=await heic2any({blob:file,toType:'image/jpeg',quality:.92});
+  const blob=Array.isArray(converted)?converted[0]:converted;
+  if(!(blob instanceof Blob))throw new Error('HEIC conversion failed');
+  return new File([blob],jpegNameForHeic(file.name),{type:'image/jpeg'});
 }
 function storagePublicUrl(path){
   return getSupabaseUrl()+'/storage/v1/object/public/'+encodeURIComponent(SUPABASE_STORAGE_BUCKET)+'/'+path.split('/').map(encodeURIComponent).join('/');
@@ -4989,11 +5018,21 @@ function openLocalMediaPicker(sceneId,media,ci,rSw,setCi){
 async function readLocalMediaFiles(files,callback){
   const valid=files.filter(isMediaUploadFile);
   if(!valid.length){toast('No valid files');return;}
-  const results=await Promise.all(valid.map(file=>new Promise(resolve=>{
+  const results=await Promise.all(valid.map(async originalFile=>{
+    let file=originalFile;
+    if(isHeicFile(file)){
+      try{
+        toast('Converting HEIC to JPEG...',2400);
+        file=await convertHeicToJpeg(file);
+      }catch(e){
+        toast('Could not convert '+originalFile.name+'. Try exporting it as JPEG first.',5200);
+        return null;
+      }
+    }
+    return await new Promise(resolve=>{
     const rt=mediaKindForFile(file);
     const fileType=uploadFileType(file);
     const mediaFile=file.type?file:new File([file],file.name,{type:fileType});
-    if(!browserCanPreviewHeic(file))toast('HEIC can be saved, but this browser may not preview it. Safari usually displays HEIC best.',5200);
     const finishWithCloud=async item=>{
       if(cloudConfigured()&&getCloudSession()){
         try{
@@ -5016,7 +5055,8 @@ async function readLocalMediaFiles(files,callback){
     reader.onload=()=>finishWithCloud({url:reader.result,type:rt,name:file.name});
     reader.onerror=()=>resolve(null);
     reader.readAsDataURL(file);
-  })));
+  });
+  }));
   callback(results.filter(Boolean));
 }
 async function restoreStoredBoardMedia(){

@@ -230,7 +230,7 @@ body.mood-closed .mood-rail{right:0;}
 .mood-item.local-only{border-color:#C4952A;}
 .mood-cloud-badge{position:absolute;top:5px;left:5px;z-index:3;font-family:'DM Mono',monospace;font-size:8px;letter-spacing:.08em;text-transform:uppercase;background:rgba(196,149,42,.92);color:#fff;border-radius:4px;padding:2px 4px;}
 .mood-cloud-badge.cloud{background:rgba(42,92,63,.92);}
-.mood-item img,.mood-item video{width:100%;aspect-ratio:16/10;object-fit:cover;background:#050706;display:block;}
+.mood-item img,.mood-item video{width:100%;aspect-ratio:16/10;object-fit:contain;background:#050706;display:block;}
 .mood-card-note,.mood-card-link{padding:8px;font-size:12px;line-height:1.35;color:var(--text);word-break:break-word;min-height:62px;}
 .mood-card-link{min-height:92px;display:flex;flex-direction:column;gap:6px;background:linear-gradient(180deg,var(--surface-soft),var(--surface));}
 .link-preview-top{display:flex;gap:8px;align-items:center;}
@@ -275,7 +275,7 @@ body.mood-closed .mood-rail{right:0;}
 .story-drag span{width:3px;height:3px;border-radius:50%;background:var(--faint);}
 .story-thumb{width:86px;aspect-ratio:16/9;border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--faint);cursor:pointer;}
 .story-thumb:hover{border-color:var(--accent);box-shadow:0 0 0 2px rgba(42,92,63,.14);}
-.story-thumb img,.story-thumb video{width:100%;height:100%;object-fit:cover;display:block;}
+.story-thumb img,.story-thumb video{width:100%;height:100%;object-fit:contain;background:#050706;display:block;}
 .story-thumb svg{opacity:.35;}
 .story-main{min-width:0;}
 .story-kicker{font-family:'DM Mono',monospace;font-size:10px;color:var(--faint);letter-spacing:.06em;margin-bottom:2px;}
@@ -307,23 +307,24 @@ body.mood-closed .mood-rail{right:0;}
 .asset-card-grid::-webkit-scrollbar{height:7px;}
 .asset-card-grid::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:999px;}
 .script-card,.asset-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px;box-shadow:0 5px 18px rgba(38,48,32,.05);display:flex;flex-direction:column;gap:9px;}
-.asset-card{width:340px;flex:0 0 340px;}
+.asset-card{width:560px;flex:0 0 560px;}
 .script-media,.asset-media{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;min-height:84px;}
 .script-media-tile,.asset-media-tile{aspect-ratio:1/1;border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--faint);cursor:pointer;}
-.script-media-tile img,.script-media-tile video,.asset-media-tile img,.asset-media-tile video{width:100%;height:100%;object-fit:cover;display:block;}
+.script-media-tile img,.script-media-tile video,.asset-media-tile img,.asset-media-tile video{width:100%;height:100%;object-fit:contain;background:#050706;display:block;}
 .script-add-media,.asset-add-media{border-style:dashed;font-family:'DM Mono',monospace;font-size:10px;text-transform:uppercase;}
 .script-card textarea{min-height:130px;}
 .script-card-actions,.asset-card-actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
 .asset-media-title{font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;color:var(--faint);}
+.asset-media-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
 .asset-bucket{border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);padding:7px;display:flex;flex-direction:column;gap:7px;}
 .asset-bucket.drag-over{border-color:var(--accent);background:var(--accent-l);box-shadow:0 0 0 3px rgba(42,92,63,.14);}
 .asset-preview{aspect-ratio:16/9;border:1px solid var(--border);border-radius:var(--rs);background:#EEF1EA;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--faint);cursor:pointer;}
-.asset-preview img,.asset-preview video{width:100%;height:100%;object-fit:cover;display:block;}
+.asset-preview img,.asset-preview video{width:100%;height:100%;object-fit:contain;background:#050706;display:block;}
 .asset-preview-empty{font-family:'DM Mono',monospace;font-size:10px;text-align:center;text-transform:uppercase;letter-spacing:.04em;padding:10px;}
 .asset-thumb-strip{display:flex;gap:7px;overflow-x:auto;padding-bottom:2px;}
 .asset-thumb{width:64px;height:46px;flex:0 0 64px;border:1px solid var(--border);border-radius:7px;background:var(--surface);overflow:hidden;cursor:pointer;position:relative;}
 .asset-thumb.active{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-l);}
-.asset-thumb img,.asset-thumb video{width:100%;height:100%;object-fit:cover;display:block;}
+.asset-thumb img,.asset-thumb video{width:100%;height:100%;object-fit:contain;background:#050706;display:block;}
 .asset-card textarea{min-height:90px;}
 
 .slideshow-wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:12px;}
@@ -347,7 +348,7 @@ body.mood-closed .mood-rail{right:0;}
 .slideshow-clip::after{content:'';position:absolute;top:0;bottom:0;left:var(--hover-x,-100px);width:1px;background:rgba(255,255,255,.85);opacity:0;pointer-events:none;}
 .slideshow-clip:hover::after{opacity:1;}
 .slideshow-clip.active{border-color:var(--gold);box-shadow:0 0 0 2px rgba(196,149,42,.24);}
-.slideshow-clip img,.slideshow-clip video{width:100%;height:100%;object-fit:cover;display:block;}
+.slideshow-clip img,.slideshow-clip video{width:100%;height:100%;object-fit:contain;background:#050706;display:block;}
 .slideshow-clip-label{position:absolute;left:4px;right:4px;bottom:3px;background:rgba(16,22,20,.74);color:#fff;border-radius:4px;padding:2px 4px;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .clip-handle{position:absolute;top:0;width:8px;height:100%;background:rgba(255,255,255,.55);cursor:ew-resize;z-index:2;}
 .clip-handle.left{left:0;}
@@ -387,7 +388,7 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
 .swiper.dov{background:var(--accent-l);border:2px dashed var(--accent);}
 .sw-track{display:flex;height:100%;transition:transform .28s cubic-bezier(.4,0,.2,1);}
 .sw-slide{min-width:100%;height:100%;position:relative;flex-shrink:0;}
-.sw-slide img,.sw-slide video{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in;}
+.sw-slide img,.sw-slide video{width:100%;height:100%;object-fit:contain;background:#050706;display:block;cursor:zoom-in;}
 .sw-empty{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;color:var(--faint);cursor:pointer;transition:background .15s;}
 .sw-empty:hover,.swiper.dov .sw-empty{background:#dff0e8;}
 .sw-empty svg{opacity:.3;}
@@ -413,7 +414,7 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
 .thumb-item:hover{opacity:1;transform:translateY(-1px);}
 .thumb-item.active{opacity:1;border-color:var(--accent);box-shadow:0 0 0 2px rgba(23,74,54,.18);}
 .thumb-item.local-only{border-color:#C4952A;}
-.thumb-item img,.thumb-item video{width:100%;height:100%;object-fit:cover;display:block;}
+.thumb-item img,.thumb-item video{width:100%;height:100%;object-fit:contain;background:#050706;display:block;}
 .thumb-placeholder{cursor:default;display:flex;align-items:center;justify-content:center;color:var(--faint);opacity:.5;}
 .thumb-placeholder:hover{opacity:.5;transform:none;}
 .thumb-play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.18);color:#fff;font-size:12px;}
@@ -1739,6 +1740,32 @@ function cleanStorageName(name){
   const safe=String(name||'media').trim().replace(/[^a-zA-Z0-9._-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80);
   return safe||'media';
 }
+function fileExt(name){
+  return (String(name||'').split('.').pop()||'').toLowerCase();
+}
+function mimeFromName(name){
+  const ext=fileExt(name);
+  if(ext==='heic')return 'image/heic';
+  if(ext==='heif')return 'image/heif';
+  if(ext==='mov')return 'video/quicktime';
+  if(ext==='mp4')return 'video/mp4';
+  if(ext==='webm')return 'video/webm';
+  return '';
+}
+function uploadFileType(file){
+  return file.type||mimeFromName(file.name)||'application/octet-stream';
+}
+function isMediaUploadFile(file){
+  const type=file.type||mimeFromName(file.name);
+  return type.startsWith('image')||type.startsWith('video');
+}
+function mediaKindForFile(file){
+  const type=file.type||mimeFromName(file.name);
+  return type.startsWith('video')?'video':'image';
+}
+function browserCanPreviewHeic(file){
+  return !/\.hei[cf]$/i.test(file.name)||/Safari/i.test(navigator.userAgent)&&!/Chrome|Chromium|CriOS/i.test(navigator.userAgent);
+}
 function storagePublicUrl(path){
   return getSupabaseUrl()+'/storage/v1/object/public/'+encodeURIComponent(SUPABASE_STORAGE_BUCKET)+'/'+path.split('/').map(encodeURIComponent).join('/');
 }
@@ -1775,7 +1802,7 @@ async function uploadFileToStorage(file,{mediaId=newMediaId(),boardId=activeStor
     headers:{
       apikey:getSupabaseAnonKey(),
       Authorization:'Bearer '+session.access_token,
-      'Content-Type':file.type||'application/octet-stream',
+      'Content-Type':uploadFileType(file),
       'Cache-Control':'3600'
     },
     body:file
@@ -3470,8 +3497,10 @@ function renderAssetsView(board){
       const notes=document.createElement('textarea');notes.placeholder='Notes, decisions, revision requests...';notes.value=card.notes||'';notes.disabled=viewOnlyMode;
       notes.oninput=()=>{card.notes=notes.value;saveAssetsData();};
       cardEl.appendChild(title);cardEl.appendChild(status);
-      cardEl.appendChild(renderAssetMediaBucket(card,'references','References'));
-      cardEl.appendChild(renderAssetMediaBucket(card,'finals','Finals'));
+      const mediaRow=document.createElement('div');mediaRow.className='asset-media-row';
+      mediaRow.appendChild(renderAssetMediaBucket(card,'references','References'));
+      mediaRow.appendChild(renderAssetMediaBucket(card,'finals','Finals'));
+      cardEl.appendChild(mediaRow);
       cardEl.appendChild(notes);
       if(!viewOnlyMode){
         const actions=document.createElement('div');actions.className='asset-card-actions';
@@ -4083,7 +4112,7 @@ function makeCard(scene){
       media.forEach((m,i)=>{const slide=document.createElement('div');slide.className='sw-slide';if(m.type==='video'){
         // Thumbnail only in card — click opens lightbox for full playback
         const thumb=document.createElement('div');thumb.style.cssText='width:100%;height:100%;background:#111;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;';
-        const vid=prepareVideoThumb(document.createElement('video'),m.url);vid.style.cssText='width:100%;height:100%;object-fit:cover;position:absolute;inset:0;';
+        const vid=prepareVideoThumb(document.createElement('video'),m.url);vid.style.cssText='width:100%;height:100%;object-fit:contain;background:#050706;position:absolute;inset:0;';
         const po=document.createElement('div');po.style.cssText='position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.55);border-radius:50%;width:44px;height:44px;display:flex;align-items:center;justify-content:center;z-index:2;pointer-events:none;';
         po.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21"/></svg>';
         thumb.appendChild(vid);thumb.appendChild(po);
@@ -4723,14 +4752,17 @@ function openLocalMediaPicker(sceneId,media,ci,rSw,setCi){
 }
 
 async function readLocalMediaFiles(files,callback){
-  const valid=files.filter(f=>f.type.startsWith('image')||f.type.startsWith('video'));
+  const valid=files.filter(isMediaUploadFile);
   if(!valid.length){toast('No valid files');return;}
   const results=await Promise.all(valid.map(file=>new Promise(resolve=>{
-    const rt=file.type.startsWith('video')?'video':'image';
+    const rt=mediaKindForFile(file);
+    const fileType=uploadFileType(file);
+    const mediaFile=file.type?file:new File([file],file.name,{type:fileType});
+    if(!browserCanPreviewHeic(file))toast('HEIC can be saved, but this browser may not preview it. Safari usually displays HEIC best.',5200);
     const finishWithCloud=async item=>{
       if(cloudConfigured()&&getCloudSession()){
         try{
-          const uploaded=await uploadFileToStorage(file,{mediaId:item.storedId||newMediaId()});
+          const uploaded=await uploadFileToStorage(mediaFile,{mediaId:item.storedId||newMediaId()});
           item.url=uploaded.url;
           item.storagePath=uploaded.storagePath;
           if(item.storedId)item.storedId=uploaded.mediaId;
@@ -4738,11 +4770,11 @@ async function readLocalMediaFiles(files,callback){
       }
       resolve(item);
     };
-    if(file.size>1800000||rt==='video'){
+    if(file.size>1800000||rt==='video'||/\.hei[cf]$/i.test(file.name)){
       const storedId=newMediaId();
-      setStoredMedia(storedId,{blob:file,type:file.type||'',name:file.name,size:file.size,updatedAt:Date.now()})
-        .then(()=>finishWithCloud({url:URL.createObjectURL(file),type:rt,name:file.name,storedId,size:file.size}))
-        .catch(()=>finishWithCloud({url:URL.createObjectURL(file),type:rt,name:file.name,transient:true}));
+      setStoredMedia(storedId,{blob:mediaFile,type:fileType,name:file.name,size:file.size,updatedAt:Date.now()})
+        .then(()=>finishWithCloud({url:URL.createObjectURL(mediaFile),type:rt,name:file.name,storedId,size:file.size}))
+        .catch(()=>finishWithCloud({url:URL.createObjectURL(mediaFile),type:rt,name:file.name,transient:true}));
       return;
     }
     const reader=new FileReader();

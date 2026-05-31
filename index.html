@@ -1065,6 +1065,7 @@ let assetTagFilter='';
 let assetsGroupByTag=false;
 let assetSearchTerms={};
 let assetSearchTimer=null;
+let assetMediaIndexes={};
 let swiperControllers=new Map();
 let currentPlaybackSceneId=null;
 let currentPlaybackStart=null;
@@ -3584,7 +3585,10 @@ function removeAssetMedia(card,bucket,index){
 function renderAssetMediaBucket(card,bucket,label){
   const wrap=document.createElement('div');wrap.className='asset-bucket';
   const items=card[bucket]||[];
-  const activeIndex=0;
+  const indexKey=card.id+':'+bucket;
+  const savedIndex=assetMediaIndexes[indexKey]||0;
+  const activeIndex=items.length?Math.max(0,Math.min(items.length-1,savedIndex)):0;
+  assetMediaIndexes[indexKey]=activeIndex;
   const title=document.createElement('div');title.className='asset-media-title';title.textContent=label;wrap.appendChild(title);
   const preview=document.createElement('div');preview.className='asset-preview';
   if(items.length){
@@ -3600,7 +3604,7 @@ function renderAssetMediaBucket(card,bucket,label){
   const strip=document.createElement('div');strip.className='asset-thumb-strip';
   items.forEach((item,index)=>{
     const tile=document.createElement('button');tile.type='button';tile.className='asset-thumb'+(index===activeIndex?' active':'');tile.title=item.name||label;
-    tile.onclick=()=>openLB(items,index,label);
+    tile.onclick=e=>{e.preventDefault();e.stopPropagation();assetMediaIndexes[indexKey]=index;render();};
     if(item.type==='video')tile.appendChild(prepareVideoThumb(document.createElement('video'),item.url));
     else{const img=document.createElement('img');img.src=item.url;img.alt='';img.loading='lazy';img.decoding='async';tile.appendChild(img);}
     if(!viewOnlyMode)tile.ondblclick=e=>{e.preventDefault();e.stopPropagation();removeAssetMedia(card,bucket,index);};

@@ -292,6 +292,25 @@ body.mood-closed .mood-rail{right:0;}
 .story-pills{display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap;}
 .story-actions{display:flex;gap:5px;justify-content:flex-end;}
 
+.script-wrap{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:18px;}
+.script-story{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px;box-shadow:var(--shadow);}
+.script-label{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:7px;}
+.script-story textarea,.script-card textarea{width:100%;border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);font-family:'Instrument Sans',sans-serif;color:var(--text);font-size:14px;line-height:1.5;padding:10px;resize:vertical;outline:none;}
+.script-story textarea:focus,.script-card textarea:focus{border-color:var(--accent);background:var(--accent-l);}
+.script-story textarea{min-height:110px;}
+.script-act{border-top:1px solid var(--border);padding-top:14px;}
+.script-act-hdr{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.script-act-name{font-family:'DM Serif Display',serif;font-size:24px;line-height:1;color:var(--text);border:1px solid transparent;border-radius:var(--rs);padding:2px 5px;margin-left:-5px;cursor:pointer;}
+.script-act-name:hover{border-color:var(--border);background:var(--surface);}
+.script-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;}
+.script-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px;box-shadow:0 5px 18px rgba(38,48,32,.05);display:flex;flex-direction:column;gap:9px;}
+.script-media{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;min-height:84px;}
+.script-media-tile{aspect-ratio:1/1;border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--faint);cursor:pointer;}
+.script-media-tile img,.script-media-tile video{width:100%;height:100%;object-fit:cover;display:block;}
+.script-add-media{border-style:dashed;font-family:'DM Mono',monospace;font-size:10px;text-transform:uppercase;}
+.script-card textarea{min-height:130px;}
+.script-card-actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
+
 .slideshow-wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:12px;}
 .slideshow-stage{background:#050706;border:1px solid #25312d;border-radius:var(--r);aspect-ratio:16/9;width:100%;max-height:min(68vh,660px);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;box-shadow:var(--shadow);}
 .slideshow-stage img,.slideshow-stage video{width:100%;height:100%;object-fit:contain;display:block;background:#050706;}
@@ -502,8 +521,7 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
   .desktop-extra-action{display:none!important;}
   .toolbar{gap:0;padding-top:8px;padding-bottom:8px;position:sticky;top:0;z-index:210;}
   .toolbar>:not(.view-group){display:none!important;}
-  .toolbar .view-group{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;width:100%;max-width:none;overflow:visible;padding:0;}
-  .toolbar .view-group .mobile-hide{display:none!important;}
+  .toolbar .view-group{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;width:100%;max-width:none;overflow:visible;padding:0;}
   .toolbar .view-group .sort-btn{justify-content:center;padding:9px 6px;font-size:12px;background:var(--surface);}
   .toolbar .view-group .sort-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
   .sort-group{margin-left:0;overflow-x:auto;max-width:100%;padding-bottom:2px;}
@@ -630,7 +648,7 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
     <button class="sort-btn" id="viewStoryBtn" onclick="setBoardView('story')">Story</button>
     <button class="sort-btn active" id="viewCardsBtn" onclick="setBoardView('cards')">Cards</button>
     <button class="sort-btn" id="viewSlideshowBtn" onclick="setBoardView('slideshow')">Animatic</button>
-    <button class="sort-btn mobile-hide" id="viewMusicBtn" onclick="setBoardView('music')">Song</button>
+    <button class="sort-btn" id="viewScriptBtn" onclick="setBoardView('script')">Script</button>
   </div>
   <div class="divider"></div>
   <span class="toolbar-label">Group by</span>
@@ -739,7 +757,7 @@ const ACTIVE_STORYBOARD_KEY='jdb_active_storyboard';
 const LAST_SCREEN_KEY='jdb_last_screen';
 const MOOD_PANEL_OPEN_KEY='jdb_mood_panel_open';
 const MOOD_PANEL_WIDTH_KEY='jdb_mood_panel_width';
-const LEGACY_BOARD_KEYS=['jdb_v4','jdb_field_settings','jdb_acts','jdb_locations','jdb_statuses','jdb_cameras','jdb_viewer_ratio','jdb_card_height','jdb_song_info','jdb_audio_name','jdb_slideshow_overrides','jdb_video_overview','jdb_moodboard'];
+const LEGACY_BOARD_KEYS=['jdb_v4','jdb_field_settings','jdb_acts','jdb_locations','jdb_statuses','jdb_cameras','jdb_viewer_ratio','jdb_card_height','jdb_song_info','jdb_audio_name','jdb_slideshow_overrides','jdb_video_overview','jdb_moodboard','jdb_script'];
 const DEFAULT_SUPABASE_URL='';
 const DEFAULT_SUPABASE_ANON_KEY='';
 const CLOUD_PATH='data/boards.json';
@@ -978,6 +996,7 @@ function seedNewStoryboard(id,name){
   localStorage.setItem(boardKey('jdb_cameras',id),JSON.stringify(DEFAULT_CAMS));
   localStorage.setItem(boardKey('jdb_field_settings',id),JSON.stringify(FIELD_DEFAULTS));
   localStorage.setItem(boardKey('jdb_song_info',id),JSON.stringify({title:name,artist:'',lyrics:''}));
+  localStorage.setItem(boardKey('jdb_script',id),JSON.stringify(defaultScriptData()));
 }
 
 let scenes=restoreMissingStarterLyrics(loadScenes());
@@ -1011,6 +1030,7 @@ let activeAgentProvider=loadAgentProvider();
 let slideshowState={playing:false,time:0,startedAt:0,startTime:0,raf:null,pxPerSec:42};
 let videoOverview=boardGet('jdb_video_overview')||'';
 let moodboard=loadMoodboard();
+let scriptData=loadScriptData();
 let lastMediaSyncResult=null;
 syncOptionsFromScenes();
 applyViewerRatio();
@@ -1041,6 +1061,68 @@ function withoutSharedHeavyMood(items){
     return null;
   }).filter(Boolean);
 }
+function defaultScriptData(){
+  return {
+    story:'',
+    acts:[1,2,3].map(n=>({id:newMediaId(),name:'Act '+n,cards:[{id:newMediaId(),text:'',media:[]}]}))
+  };
+}
+function normalizeScriptData(data){
+  const base=data&&typeof data==='object'?data:defaultScriptData();
+  const acts=Array.isArray(base.acts)&&base.acts.length?base.acts:defaultScriptData().acts;
+  return {
+    story:String(base.story||''),
+    acts:acts.map((act,actIndex)=>({
+      id:act.id||newMediaId(),
+      name:act.name||('Act '+(actIndex+1)),
+      cards:(Array.isArray(act.cards)&&act.cards.length?act.cards:[{id:newMediaId(),text:'',media:[]}]).map(card=>({
+        id:card.id||newMediaId(),
+        text:String(card.text||''),
+        media:Array.isArray(card.media)?card.media.filter(Boolean):[]
+      }))
+    }))
+  };
+}
+function scriptMediaItems(data=scriptData){
+  return (data?.acts||[]).flatMap(act=>(act.cards||[]).flatMap(card=>card.media||[]));
+}
+function localScriptRecord(data){
+  const normalized=normalizeScriptData(data);
+  return {
+    ...normalized,
+    acts:normalized.acts.map(act=>({
+      ...act,
+      cards:act.cards.map(card=>({...card,media:(card.media||[]).map(localMediaRecord).filter(Boolean)}))
+    }))
+  };
+}
+function withoutSharedHeavyScript(data){
+  const normalized=normalizeScriptData(data);
+  return {
+    ...normalized,
+    acts:normalized.acts.map(act=>({
+      ...act,
+      cards:act.cards.map(card=>({
+        ...card,
+        media:(card.media||[])
+          .filter(m=>m&&isCloudMedia(m))
+          .map(m=>({type:m.type||'image',name:m.name||'',url:m.url||storagePublicUrl(m.storagePath),storagePath:m.storagePath||''}))
+      }))
+    }))
+  };
+}
+function loadScriptData(){
+  try{
+    const raw=boardGet('jdb_script');
+    if(raw)return normalizeScriptData(JSON.parse(raw));
+  }catch(e){}
+  return defaultScriptData();
+}
+function saveScriptData(){
+  scriptData=normalizeScriptData(scriptData);
+  boardSet('jdb_script',JSON.stringify(localScriptRecord(scriptData)));
+  touchStoryboard();
+}
 function localMoodRecord(item){
   if(!item)return null;
   if(item.kind==='note'||item.kind==='link')return {...item};
@@ -1068,6 +1150,10 @@ function sharedBoardValue(key,value){
       if(Array.isArray(parsed))return JSON.stringify(withoutSharedHeavyMood(parsed));
     }catch(e){}
     return '[]';
+  }
+  if(key==='jdb_script'){
+    try{return JSON.stringify(withoutSharedHeavyScript(JSON.parse(value)));}catch(e){}
+    return JSON.stringify(defaultScriptData());
   }
   if(key!=='jdb_v4')return value;
   try{
@@ -1330,6 +1416,7 @@ function reloadBoardState(){
   songInfo=loadSongInfo();
   videoOverview=boardGet('jdb_video_overview')||'';
   moodboard=loadMoodboard();
+  scriptData=loadScriptData();
   chatMessages=[{role:'assistant',text:'Board ready.'}];
   claudeMessages=[{role:'assistant',text:'Claude board chat ready.'}];
   syncOptionsFromScenes();
@@ -1546,7 +1633,7 @@ function isLocalOnlyMedia(item){
   return !!(item&&!item.kind&&!isCloudMedia(item));
 }
 function mediaCloudCounts(){
-  const items=[...scenes.flatMap(scene=>scene.media||[]),...moodboard.filter(item=>item&&!item.kind)];
+  const items=[...scenes.flatMap(scene=>scene.media||[]),...moodboard.filter(item=>item&&!item.kind),...scriptMediaItems()];
   return {
     total:items.length,
     cloud:items.filter(isCloudMedia).length,
@@ -1567,6 +1654,7 @@ function normalizeCloudMediaReference(item){
 function normalizeCloudMediaReferences(){
   scenes.forEach(scene=>(scene.media||[]).forEach(normalizeCloudMediaReference));
   moodboard.forEach(normalizeCloudMediaReference);
+  scriptMediaItems().forEach(normalizeCloudMediaReference);
 }
 function dataUrlToFile(dataUrl,name='image.png'){
   const parts=String(dataUrl||'').match(/^data:([^;,]+)?(;base64)?,(.*)$/);
@@ -1656,7 +1744,8 @@ async function syncLocalMediaToCloud({notify=true}={}){
     for(const item of (scene.media||[]))await syncItem(item);
   }
   for(const item of moodboard)await syncItem(item);
-  if(changed){save();saveMoodboard();}
+  for(const item of scriptMediaItems())await syncItem(item);
+  if(changed){save();saveMoodboard();saveScriptData();}
   const counts=mediaCloudCounts();
   lastMediaSyncResult={uploaded,failed,localOnly:counts.local,total:counts.total,configured:true,errors};
   if(notify){
@@ -1932,7 +2021,7 @@ function renderLyricsPanel(b){
   const restore=document.createElement('button');restore.className='btn btn-sm';restore.textContent='Restore old lyrics';
   restore.onclick=()=>{songInfo.lyrics=defaultMasterLyrics();saveSongInfo();lyrics.value=songInfo.lyrics;toast('Original lyrics restored');};
   const clear=document.createElement('button');clear.className='btn btn-sm';clear.textContent='Clear lyrics';
-  clear.onclick=()=>{songInfo.lyrics='';saveSongInfo();boardView==='music'?render():renderPanel();};
+  clear.onclick=()=>{songInfo.lyrics='';saveSongInfo();renderPanel();};
   actions.appendChild(transcribe);actions.appendChild(sync);actions.appendChild(restore);actions.appendChild(clear);w.appendChild(actions);
   const note=document.createElement('div');note.className='song-note';
   note.textContent='Auto transcribe uses ElevenLabs Speech to Text. If cards are selected, “Add to scene lyrics” only updates those cards.';
@@ -3076,8 +3165,8 @@ function setSort(field){
 // ── BOARD ──
 let groupBy='act';
 function setBoardView(view){
-  boardView=view==='story'||view==='slideshow'||view==='music'?view:'cards';
-  document.getElementById('viewMusicBtn').classList.toggle('active',boardView==='music');
+  boardView=view==='story'||view==='slideshow'||view==='script'?view:'cards';
+  document.getElementById('viewScriptBtn').classList.toggle('active',boardView==='script');
   document.getElementById('viewCardsBtn').classList.toggle('active',boardView==='cards');
   document.getElementById('viewStoryBtn').classList.toggle('active',boardView==='story');
   document.getElementById('viewSlideshowBtn').classList.toggle('active',boardView==='slideshow');
@@ -3090,6 +3179,92 @@ function setGroup(field){
     if(btn)btn.classList.toggle('active',f===field);
   });
   render();
+}
+function addScriptAct(){
+  if(viewOnlyMode)return;
+  scriptData.acts.push({id:newMediaId(),name:'Act '+(scriptData.acts.length+1),cards:[{id:newMediaId(),text:'',media:[]}]});
+  saveScriptData();render();toast('Act added');
+}
+function renameScriptAct(act){
+  if(viewOnlyMode)return;
+  const name=(prompt('Act name:',act.name)||'').trim();
+  if(!name)return;
+  act.name=name;saveScriptData();render();
+}
+function addScriptCard(act){
+  if(viewOnlyMode)return;
+  act.cards.push({id:newMediaId(),text:'',media:[]});
+  saveScriptData();render();
+}
+function deleteScriptCard(act,card){
+  if(viewOnlyMode||act.cards.length<2)return;
+  if(!confirm('Delete this script card?'))return;
+  act.cards=act.cards.filter(item=>item.id!==card.id);
+  saveScriptData();render();
+}
+function addScriptMedia(card){
+  if(viewOnlyMode)return;
+  const input=document.createElement('input');
+  input.type='file';input.accept='image/*,video/*,.heic,.mov,.mp4,.webm';input.multiple=true;
+  input.onchange=()=>readLocalMediaFiles(Array.from(input.files||[]),results=>{
+    card.media=[...(card.media||[]),...results.filter(Boolean)];
+    saveScriptData();render();toast(results.length+' reference file(s) added');
+  });
+  input.click();
+}
+function removeScriptMedia(card,index){
+  if(viewOnlyMode)return;
+  card.media.splice(index,1);
+  saveScriptData();render();
+}
+function renderScriptView(board){
+  scriptData=normalizeScriptData(scriptData);
+  const wrap=document.createElement('div');wrap.className='script-wrap';
+  const story=document.createElement('div');story.className='script-story';
+  const label=document.createElement('div');label.className='script-label';label.textContent='Story';
+  const storyText=document.createElement('textarea');storyText.placeholder='Core idea of the film...';storyText.value=scriptData.story||'';storyText.disabled=viewOnlyMode;
+  storyText.oninput=()=>{scriptData.story=storyText.value;saveScriptData();};
+  story.appendChild(label);story.appendChild(storyText);wrap.appendChild(story);
+  scriptData.acts.forEach((act,actIndex)=>{
+    const actEl=document.createElement('section');actEl.className='script-act';
+    const hdr=document.createElement('div');hdr.className='script-act-hdr';
+    const name=document.createElement('div');name.className='script-act-name';name.textContent=act.name||('Act '+(actIndex+1));name.onclick=()=>renameScriptAct(act);
+    hdr.appendChild(name);
+    if(!viewOnlyMode){
+      const add=document.createElement('button');add.className='btn btn-sm';add.textContent='+ Card';add.onclick=()=>addScriptCard(act);hdr.appendChild(add);
+    }
+    actEl.appendChild(hdr);
+    const grid=document.createElement('div');grid.className='script-card-grid';
+    act.cards.forEach(card=>{
+      const cardEl=document.createElement('article');cardEl.className='script-card';
+      const media=document.createElement('div');media.className='script-media';
+      (card.media||[]).forEach((item,index)=>{
+        const tile=document.createElement('button');tile.type='button';tile.className='script-media-tile';tile.title=item.name||'Reference';
+        tile.onclick=()=>openLB(card.media,index,act.name);
+        if(item.type==='video')tile.appendChild(prepareVideoThumb(document.createElement('video'),item.url));
+        else{const img=document.createElement('img');img.src=item.url;img.alt='';img.loading='lazy';img.decoding='async';tile.appendChild(img);}
+        if(!viewOnlyMode)tile.ondblclick=e=>{e.preventDefault();e.stopPropagation();removeScriptMedia(card,index);};
+        media.appendChild(tile);
+      });
+      if(!viewOnlyMode){
+        const addMedia=document.createElement('button');addMedia.type='button';addMedia.className='script-media-tile script-add-media';addMedia.textContent='+ Pics';addMedia.onclick=()=>addScriptMedia(card);media.appendChild(addMedia);
+      }
+      const text=document.createElement('textarea');text.placeholder='Write the scenes for this part...';text.value=card.text||'';text.disabled=viewOnlyMode;
+      text.oninput=()=>{card.text=text.value;saveScriptData();};
+      cardEl.appendChild(media);cardEl.appendChild(text);
+      if(!viewOnlyMode){
+        const actions=document.createElement('div');actions.className='script-card-actions';
+        const del=document.createElement('button');del.className='card-del-btn';del.textContent='Delete';del.onclick=()=>deleteScriptCard(act,card);
+        actions.appendChild(del);cardEl.appendChild(actions);
+      }
+      grid.appendChild(cardEl);
+    });
+    actEl.appendChild(grid);wrap.appendChild(actEl);
+  });
+  if(!viewOnlyMode){
+    const addAct=document.createElement('button');addAct.className='btn btn-primary';addAct.textContent='+ Add act';addAct.onclick=addScriptAct;wrap.appendChild(addAct);
+  }
+  board.appendChild(wrap);
 }
 
 function getGroupValue(scene,field){
@@ -3119,15 +3294,13 @@ function render(){
   selectedSceneIds=new Set([...selectedSceneIds].filter(id=>scenes.some(scene=>scene.id===id)));
   renderSelectionBar();
   refreshFilterOptions();
-  document.getElementById('viewMusicBtn').classList.toggle('active',boardView==='music');
+  document.getElementById('viewScriptBtn').classList.toggle('active',boardView==='script');
   document.getElementById('viewCardsBtn').classList.toggle('active',boardView==='cards');
   document.getElementById('viewStoryBtn').classList.toggle('active',boardView==='story');
   document.getElementById('viewSlideshowBtn').classList.toggle('active',boardView==='slideshow');
   const board=document.getElementById('board');board.innerHTML='';
-  if(boardView==='music'){
-    const wrap=document.createElement('div');wrap.className='lyrics-mobile-view';
-    renderLyricsPanel(wrap);
-    board.appendChild(wrap);
+  if(boardView==='script'){
+    renderScriptView(board);
     renderPanel();renderMoodboard();
     return;
   }
@@ -4368,6 +4541,7 @@ async function restoreStoredBoardMedia(){
     for(const item of (scene.media||[]))await restoreItem(item);
   }
   for(const item of moodboard)await restoreItem(item);
+  for(const item of scriptMediaItems())await restoreItem(item);
   if(changed){render();renderMoodboard();}
 }
 </script>

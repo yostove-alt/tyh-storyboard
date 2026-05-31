@@ -295,14 +295,16 @@ body.mood-closed .mood-rail{right:0;}
 .script-wrap,.assets-wrap{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:18px;}
 .script-story,.assets-intro{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px;box-shadow:var(--shadow);}
 .script-label,.asset-label{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:7px;}
-.script-story textarea,.script-card textarea,.asset-card textarea,.asset-card input,.asset-card select{width:100%;border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);font-family:'Instrument Sans',sans-serif;color:var(--text);font-size:14px;line-height:1.5;padding:10px;resize:vertical;outline:none;}
-.script-story textarea:focus,.script-card textarea:focus,.asset-card textarea:focus,.asset-card input:focus,.asset-card select:focus{border-color:var(--accent);background:var(--accent-l);}
+.script-story textarea,.script-card textarea,.script-card input,.asset-card textarea,.asset-card input,.asset-card select{width:100%;border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);font-family:'Instrument Sans',sans-serif;color:var(--text);font-size:14px;line-height:1.5;padding:10px;resize:vertical;outline:none;}
+.script-story textarea:focus,.script-card textarea:focus,.script-card input:focus,.asset-card textarea:focus,.asset-card input:focus,.asset-card select:focus{border-color:var(--accent);background:var(--accent-l);}
 .script-story textarea{min-height:110px;}
 .script-act,.asset-section{border-top:1px solid var(--border);padding-top:14px;}
 .script-act-hdr,.asset-section-hdr{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
 .script-act-name,.asset-section-name{font-family:'DM Serif Display',serif;font-size:24px;line-height:1;color:var(--text);border:1px solid transparent;border-radius:var(--rs);padding:2px 5px;margin-left:-5px;cursor:pointer;}
 .script-act-name:hover,.asset-section-name:hover{border-color:var(--border);background:var(--surface);}
-.script-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;}
+.script-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,520px),1fr));gap:12px;}
+.script-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;}
+.script-tools select{border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);font-family:'Instrument Sans',sans-serif;color:var(--text);font-size:13px;padding:8px 9px;outline:none;}
 .asset-browser{display:grid;grid-template-columns:270px minmax(0,1fr);gap:14px;align-items:start;}
 .asset-sidebar{border:1px solid var(--border);border-radius:var(--r);background:var(--surface);padding:8px;display:flex;flex-direction:column;gap:8px;overflow:auto;}
 .asset-search{width:100%;border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);font-family:'Instrument Sans',sans-serif;font-size:13px;padding:8px 9px;outline:none;}
@@ -319,8 +321,11 @@ body.mood-closed .mood-rail{right:0;}
 .asset-detail{min-width:0;}
 .script-card,.asset-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px;box-shadow:0 5px 18px rgba(38,48,32,.05);display:flex;flex-direction:column;gap:9px;}
 .asset-card{width:100%;}
-.script-media,.asset-media{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;min-height:84px;}
-.script-media-tile,.asset-media-tile{aspect-ratio:1/1;border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--faint);cursor:pointer;}
+.script-media{display:flex;gap:7px;min-height:54px;overflow-x:auto;padding-bottom:2px;}
+.asset-media{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;min-height:84px;}
+.script-media-tile{width:82px;height:54px;flex:0 0 82px;}
+.script-media-tile,.asset-media-tile{border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--faint);cursor:pointer;}
+.asset-media-tile{aspect-ratio:1/1;}
 .script-media-tile img,.script-media-tile video,.asset-media-tile img,.asset-media-tile video{width:100%;height:100%;object-fit:contain;background:#050706;display:block;}
 .script-add-media,.asset-add-media{border-style:dashed;font-family:'DM Mono',monospace;font-size:10px;text-transform:uppercase;}
 .script-card textarea{min-height:130px;}
@@ -1109,10 +1114,66 @@ function withoutSharedHeavyMood(items){
     return null;
   }).filter(Boolean);
 }
+const SCRIPT_TEMPLATES=[
+  {
+    id:'classic-screenplay',
+    name:'Classic screenplay',
+    acts:[
+      {name:'Act 1',cards:[
+        {title:'Sequence 1: Introduction',text:'Establish the world, main character, tone, and the normal rhythm before the story problem arrives.\n\nGoal:\nPayoff:'},
+        {title:'Sequence 2: Inciting incident and commitment',text:'A problem or opportunity appears. The character reacts, resists or tests it, then commits to the story path.\n\nGoal:\nPayoff:'}
+      ]},
+      {name:'Act 2A',cards:[
+        {title:'Sequence 3: First attempts',text:'The first real attempts to solve the problem. The plan can work partially, but the character is still learning the rules.\n\nGoal:\nPayoff:'},
+        {title:'Sequence 4: Complications',text:'Pressure increases. The easy version of the plan fails, relationships strain, and the story points toward a larger turn.\n\nGoal:\nPayoff:'}
+      ]},
+      {name:'Midpoint',cards:[
+        {title:'Midpoint',text:'A major discovery, reversal, win, or loss changes the meaning of the story and raises the stakes.\n\nGoal:\nPayoff:'}
+      ]},
+      {name:'Act 2B',cards:[
+        {title:'Sequence 5: Escalation',text:'The consequences get bigger. The character tries harder, pays more, and the conflict becomes harder to contain.\n\nGoal:\nPayoff:'},
+        {title:'Sequence 6: Crisis',text:'The worst pressure before the final act. The old approach collapses and the character must choose a new way forward.\n\nGoal:\nPayoff:'}
+      ]},
+      {name:'Act 3',cards:[
+        {title:'Sequence 7: Final plan',text:'The character makes a final plan using what they have learned. Momentum tightens toward the climax.\n\nGoal:\nPayoff:'},
+        {title:'Sequence 8: Climax and resolution',text:'The decisive confrontation, final payoff, and emotional/story resolution.\n\nGoal:\nPayoff:'}
+      ]}
+    ]
+  },
+  {
+    id:'cartoon-11',
+    name:'Modern 11-minute cartoon',
+    acts:[
+      {name:'Cold Open (0:00-0:30)',cards:[
+        {title:'Cold Open',text:'Immediate joke, weird situation, or character dynamic. End with the problem appearing.\n\nExamples: destroy a lawnmower, avoid school, discover a strange object.'}
+      ]},
+      {name:'Act 1: The Setup (0:30-3:00)',cards:[
+        {title:'Beat 1: Normal World',text:'Show characters doing their normal thing.\n\nQuestion: What do they want today?\nExamples: win a contest, skip work, buy a toy, impress someone.'},
+        {title:'Beat 2: Inciting Incident',text:'Something happens that creates the episode problem.\n\nExamples: a magical object appears, a challenge is issued, a misunderstanding occurs.'},
+        {title:'Beat 3: Decision',text:'Characters commit to a plan. This launches the story.\n\nExample: Let us use this machine to make our chores easier.'}
+      ]},
+      {name:'Act 2A: Escalation (3:00-6:00)',cards:[
+        {title:'Beat 4: Initial Success',text:'The plan works. Characters think they are winning.\n\nExamples: chores vanish, magic item solves problems, lie gets them out of trouble.'},
+        {title:'Beat 5: Fun & Games',text:'The biggest comedy section. Explore the premise with jokes, variations, and montage energy.\n\nExamples: too many clones, abused magic item, ridiculous montage.'},
+        {title:'Beat 6: Midpoint Twist',text:'Something changes. Stakes increase, a secret is revealed, or the situation spirals.\n\nExample: clones become independent and hostile.'}
+      ]},
+      {name:'Act 2B: Chaos (6:00-9:00)',cards:[
+        {title:'Beat 7: Things Get Worse',text:'Characters lose control. Problems compound rapidly.\n\nExamples: city destroyed, monster appears, lies unravel.'},
+        {title:'Beat 8: Lowest Point',text:'Characters realize they messed up. Often includes an argument, regret, or a failed solution.'}
+      ]},
+      {name:'Act 3: Resolution (9:00-11:00)',cards:[
+        {title:'Beat 9: Crazy Final Plan',text:'One last solution. Fast-paced, visually large, and usually the most action-packed sequence.'},
+        {title:'Beat 10: Climax',text:'Big confrontation.\n\nExamples: fight giant monster, reverse magic spell, stop runaway machine.'},
+        {title:'Beat 11: Reset',text:'Problem solved. The world returns to normal and the status quo is restored.'},
+        {title:'Tag Joke',text:'Final 5-15 second punchline.\n\nExamples: tiny clone survived, villain returns briefly, character repeats the mistake.'}
+      ]}
+    ]
+  }
+];
 function defaultScriptData(){
   return {
     story:'',
-    acts:[1,2,3].map(n=>({id:newMediaId(),name:'Act '+n,cards:[{id:newMediaId(),text:'',media:[]}]}))
+    acts:[1,2,3].map(n=>({id:newMediaId(),name:'Act '+n,cards:[{id:newMediaId(),title:'',text:'',media:[]}]}))
   };
 }
 function normalizeScriptData(data){
@@ -1123,8 +1184,9 @@ function normalizeScriptData(data){
     acts:acts.map((act,actIndex)=>({
       id:act.id||newMediaId(),
       name:act.name||('Act '+(actIndex+1)),
-      cards:(Array.isArray(act.cards)&&act.cards.length?act.cards:[{id:newMediaId(),text:'',media:[]}]).map(card=>({
+      cards:(Array.isArray(act.cards)&&act.cards.length?act.cards:[{id:newMediaId(),title:'',text:'',media:[]}]).map(card=>({
         id:card.id||newMediaId(),
+        title:String(card.title||''),
         text:String(card.text||''),
         media:Array.isArray(card.media)?card.media.filter(Boolean):[]
       }))
@@ -3451,7 +3513,7 @@ function setGroup(field){
 }
 function addScriptAct(){
   if(viewOnlyMode)return;
-  scriptData.acts.push({id:newMediaId(),name:'Act '+(scriptData.acts.length+1),cards:[{id:newMediaId(),text:'',media:[]}]});
+  scriptData.acts.push({id:newMediaId(),name:'Act '+(scriptData.acts.length+1),cards:[{id:newMediaId(),title:'',text:'',media:[]}]});
   saveScriptData();render();toast('Act added');
 }
 function renameScriptAct(act){
@@ -3462,7 +3524,7 @@ function renameScriptAct(act){
 }
 function addScriptCard(act){
   if(viewOnlyMode)return;
-  act.cards.push({id:newMediaId(),text:'',media:[]});
+  act.cards.push({id:newMediaId(),title:'',text:'',media:[]});
   saveScriptData();render();
 }
 function deleteScriptCard(act,card){
@@ -3486,6 +3548,18 @@ function removeScriptMedia(card,index){
   card.media.splice(index,1);
   saveScriptData();render();
 }
+function applyScriptTemplate(templateId){
+  if(viewOnlyMode)return;
+  const template=SCRIPT_TEMPLATES.find(item=>item.id===templateId);
+  if(!template)return;
+  if(!confirm('Apply "'+template.name+'"? This will replace the current script acts and cards, but keep the Story paragraph.'))return;
+  scriptData.acts=template.acts.map(act=>({
+    id:newMediaId(),
+    name:act.name,
+    cards:act.cards.map(card=>({id:newMediaId(),title:card.title||'',text:card.text||'',media:[]}))
+  }));
+  saveScriptData();render();toast('Template applied');
+}
 function renderScriptView(board){
   scriptData=normalizeScriptData(scriptData);
   const wrap=document.createElement('div');wrap.className='script-wrap';
@@ -3494,6 +3568,15 @@ function renderScriptView(board){
   const storyText=document.createElement('textarea');storyText.placeholder='Core idea of the film...';storyText.value=scriptData.story||'';storyText.disabled=viewOnlyMode;
   storyText.oninput=()=>{scriptData.story=storyText.value;saveScriptData();};
   story.appendChild(label);story.appendChild(storyText);wrap.appendChild(story);
+  if(!viewOnlyMode){
+    const tools=document.createElement('div');tools.className='script-tools';
+    const templateSelect=document.createElement('select');
+    const empty=document.createElement('option');empty.value='';empty.textContent='Choose script template';templateSelect.appendChild(empty);
+    SCRIPT_TEMPLATES.forEach(template=>{const option=document.createElement('option');option.value=template.id;option.textContent=template.name;templateSelect.appendChild(option);});
+    const apply=document.createElement('button');apply.className='btn btn-sm';apply.textContent='Apply template';
+    apply.onclick=()=>applyScriptTemplate(templateSelect.value);
+    tools.appendChild(templateSelect);tools.appendChild(apply);story.appendChild(tools);
+  }
   scriptData.acts.forEach((act,actIndex)=>{
     const actEl=document.createElement('section');actEl.className='script-act';
     const hdr=document.createElement('div');hdr.className='script-act-hdr';
@@ -3518,9 +3601,11 @@ function renderScriptView(board){
       if(!viewOnlyMode){
         const addMedia=document.createElement('button');addMedia.type='button';addMedia.className='script-media-tile script-add-media';addMedia.textContent='+ Pics';addMedia.onclick=()=>addScriptMedia(card);media.appendChild(addMedia);
       }
+      const title=document.createElement('input');title.placeholder='Sequence title';title.value=card.title||'';title.disabled=viewOnlyMode;
+      title.oninput=()=>{card.title=title.value;saveScriptData();};
       const text=document.createElement('textarea');text.placeholder='Write the scenes for this part...';text.value=card.text||'';text.disabled=viewOnlyMode;
       text.oninput=()=>{card.text=text.value;saveScriptData();};
-      cardEl.appendChild(media);cardEl.appendChild(text);
+      cardEl.appendChild(media);cardEl.appendChild(title);cardEl.appendChild(text);
       if(!viewOnlyMode){
         const actions=document.createElement('div');actions.className='script-card-actions';
         const del=document.createElement('button');del.className='card-del-btn';del.textContent='Delete';del.onclick=()=>deleteScriptCard(act,card);

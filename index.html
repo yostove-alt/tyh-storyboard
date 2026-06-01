@@ -4088,6 +4088,104 @@ async function runStoryAI(promptText,provider,button){
     button.disabled=false;button.textContent=original;
   }
 }
+function scriptAIInstructions(){
+  return [
+    'You are a screenplay and short-form video writer inside Judoboards.',
+    'Return only valid JSON.',
+    'Return this shape: {"acts":[{"name":"Act or section name","cards":[{"title":"script beat title","timing":"00:00-00:15","duration":"15 sec","dialogue":"screenplay dialogue or voiceover","visual":"visual notes and action"}]}]}',
+    'Use the Story planning tab as the creative source of truth, and use the current Script tab as the editable structure to fill or revise.',
+    'If the user asks to fill the current script fields, keep the current act/card structure where possible and complete the empty fields.',
+    'If the user asks for a new version, generate a clean timed script structure appropriate for the format.',
+    'Write practical script blocks for production: clear timing, concise dialogue/voiceover, and visual notes that can become storyboard cards.',
+    'Do not generate storyboard cards here. This only fills the Script tab fields.'
+  ].join('\n');
+}
+function scriptAIContext(extraPrompt){
+  return {
+    request:extraPrompt||'Fill the Script tab from the Story page.',
+    storyPage:{
+      story:scriptData.story||'',
+      acts:(scriptData.acts||[]).map(act=>({
+        name:act.name||'',
+        cards:(act.cards||[]).map(card=>({title:card.title||'',hint:card.hint||'',text:card.text||''}))
+      }))
+    },
+    currentScript:{
+      acts:(timedScriptData.acts||[]).map(act=>({
+        name:act.name||'',
+        cards:(act.cards||[]).map(card=>({
+          title:card.title||'',
+          timing:card.timing||'',
+          duration:card.duration||'',
+          dialogue:card.dialogue||card.text||'',
+          visual:card.visual||'',
+          hint:card.hint||''
+        }))
+      }))
+    }
+  };
+}
+function normalizeScriptAIPayload(payload){
+  const acts=Array.isArray(payload?.acts)?payload.acts:[];
+  return {
+    story:'',
+    summary:'',
+    storyPrompt:'',
+    acts:acts.map((act,actIndex)=>({
+      id:newMediaId(),
+      name:String(act.name||('Act '+(actIndex+1))),
+      cards:(Array.isArray(act.cards)?act.cards:[]).map(card=>({
+        id:newMediaId(),
+        title:String(card.title||card.name||'Script beat'),
+        purpose:String(card.purpose||''),
+        timing:String(card.timing||card.time||card.timecode||''),
+        duration:String(card.duration||card.estimatedDuration||''),
+        dialogue:String(card.dialogue||card.voiceover||card.text||''),
+        visual:String(card.visual||card.visualNotes||card.action||''),
+        hint:String(card.hint||''),
+        text:String(card.dialogue||card.voiceover||card.text||''),
+        media:[]
+      })).filter(card=>card.title||card.timing||card.dialogue||card.visual)
+    })).filter(act=>act.cards.length)
+  };
+}
+async function runScriptAI(promptText,provider,button){
+  if(viewOnlyMode)return;
+  const isClaude=provider==='claude';
+  const key=isClaude?getClaudeKey():getOpenAIKey();
+  if(!key){toast('Add '+(isClaude?'Claude':'OpenAI')+' API key in Agent tab first');openPanel('agent');return;}
+  const original=button.textContent;
+  button.disabled=true;button.textContent='Writing...';
+  try{
+    const input='Return valid json only. Fill/revise the Script timing, dialogue, and visual fields from this context:\n'+JSON.stringify(scriptAIContext(promptText));
+    let text='';
+    if(isClaude){
+      const response=await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},
+        body:JSON.stringify({model:getClaudeModel(),system:scriptAIInstructions(),max_tokens:5000,messages:[{role:'user',content:input}]})
+      });
+      if(!response.ok){let detail='';try{const err=await response.json();detail=err.error?.message||'';}catch(e){}toast('Claude returned '+response.status+(detail?': '+detail:''),7000);return;}
+      text=extractClaudeText(await response.json());
+    }else{
+      const response=await fetch('https://api.openai.com/v1/responses',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+        body:JSON.stringify({model:getOpenAIModel(),instructions:scriptAIInstructions(),input,max_output_tokens:5000,text:{format:{type:'json_object'}}})
+      });
+      if(!response.ok){let detail='';try{const err=await response.json();detail=err.error?.message||'';}catch(e){}toast('OpenAI returned '+response.status+(detail?': '+detail:''),7000);return;}
+      text=extractResponseText(await response.json());
+    }
+    const payload=normalizeScriptAIPayload(parseAgentPayload(text));
+    if(!payload.acts.length){toast('AI did not return script blocks');return;}
+    timedScriptData=payload;
+    saveTimedScriptData();render();toast('Script filled by '+(isClaude?'Claude':'ChatGPT'));
+  }catch(e){
+    toast('Could not reach '+(isClaude?'Claude':'OpenAI')+' from this page',7000);
+  }finally{
+    button.disabled=false;button.textContent=original;
+  }
+}
 function renderStoryView(board){
   scriptData=normalizeScriptData(scriptData);
   const wrap=document.createElement('div');wrap.className='script-wrap';
@@ -4155,6 +4253,17 @@ function renderScriptView(board){
   timedScriptData=normalizeScriptData(timedScriptData);
   const wrap=document.createElement('div');wrap.className='script-wrap';
   if(!viewOnlyMode){
+    const aiBox=document.createElement('div');aiBox.className='story-ai';
+    const aiPrompt=document.createElement('textarea');aiPrompt.placeholder='Ask AI to fill or revise the script fields from the Story page. Example: Fill the timing, dialogue, and visual notes for a warm 5-minute Bat Mitzvah video.';
+    const aiRow=document.createElement('div');aiRow.className='story-ai-row';
+    const providerSel=document.createElement('select');
+    [['openai','ChatGPT'],['claude','Claude']].forEach(([value,label])=>{const option=document.createElement('option');option.value=value;option.textContent=label;providerSel.appendChild(option);});
+    providerSel.value=activeAgentProvider;
+    providerSel.onchange=()=>setAgentProvider(providerSel.value);
+    const aiBtn=document.createElement('button');aiBtn.className='btn btn-primary';aiBtn.textContent='AI fill script fields';aiBtn.onclick=()=>runScriptAI(aiPrompt.value,providerSel.value,aiBtn);
+    const aiNote=document.createElement('div');aiNote.className='story-ai-note';aiNote.textContent='Reads the Story page and current Script beats. Results stay editable.';
+    aiRow.appendChild(providerSel);aiRow.appendChild(aiBtn);aiRow.appendChild(aiNote);
+    aiBox.appendChild(aiPrompt);aiBox.appendChild(aiRow);wrap.appendChild(aiBox);
     const tools=document.createElement('div');tools.className='script-tools';
     const generate=document.createElement('button');generate.className='btn btn-primary';generate.textContent='Generate cards from script';
     generate.onclick=generateCardsFromScript;

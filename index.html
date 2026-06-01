@@ -818,7 +818,7 @@ const LAST_SCREEN_KEY='jdb_last_screen';
 const MOOD_PANEL_OPEN_KEY='jdb_mood_panel_open';
 const MOOD_PANEL_WIDTH_KEY='jdb_mood_panel_width';
 const SCRIPT_TEMPLATE_KEY='jdb_script_templates';
-const LEGACY_BOARD_KEYS=['jdb_v4','jdb_field_settings','jdb_acts','jdb_locations','jdb_statuses','jdb_cameras','jdb_viewer_ratio','jdb_card_height','jdb_song_info','jdb_audio_name','jdb_slideshow_overrides','jdb_video_overview','jdb_moodboard','jdb_script','jdb_assets','jdb_board_view','jdb_view_settings'];
+const LEGACY_BOARD_KEYS=['jdb_v4','jdb_field_settings','jdb_acts','jdb_locations','jdb_statuses','jdb_cameras','jdb_viewer_ratio','jdb_card_height','jdb_song_info','jdb_audio_name','jdb_slideshow_overrides','jdb_video_overview','jdb_moodboard','jdb_script','jdb_timed_script','jdb_assets','jdb_board_view','jdb_view_settings'];
 const DEFAULT_SUPABASE_URL='';
 const DEFAULT_SUPABASE_ANON_KEY='';
 const CLOUD_PATH='data/boards.json';
@@ -1058,9 +1058,10 @@ function seedNewStoryboard(id,name){
   localStorage.setItem(boardKey('jdb_field_settings',id),JSON.stringify(FIELD_DEFAULTS));
   localStorage.setItem(boardKey('jdb_song_info',id),JSON.stringify({title:name,artist:'',lyrics:''}));
   localStorage.setItem(boardKey('jdb_script',id),JSON.stringify(defaultScriptData()));
+  localStorage.setItem(boardKey('jdb_timed_script',id),JSON.stringify(defaultTimedScriptData()));
   localStorage.setItem(boardKey('jdb_assets',id),JSON.stringify(defaultAssetsData()));
   localStorage.setItem(boardKey('jdb_view_settings',id),JSON.stringify(DEFAULT_BOARD_VIEWS));
-  localStorage.setItem(boardKey('jdb_board_view',id),'script');
+  localStorage.setItem(boardKey('jdb_board_view',id),'story');
 }
 
 let scenes=restoreMissingStarterLyrics(loadScenes());
@@ -1103,6 +1104,7 @@ let slideshowState={playing:false,time:0,startedAt:0,startTime:0,raf:null,pxPerS
 let videoOverview=boardGet('jdb_video_overview')||'';
 let moodboard=loadMoodboard();
 let scriptData=loadScriptData();
+let timedScriptData=loadTimedScriptData();
 let assetsData=loadAssetsData();
 let lastMediaSyncResult=null;
 syncOptionsFromScenes();
@@ -1237,7 +1239,15 @@ function defaultScriptData(){
     story:'',
     summary:'',
     storyPrompt:'',
-    acts:[1,2,3].map(n=>({id:newMediaId(),name:'Act '+n,cards:[{id:newMediaId(),title:'',purpose:'',timing:'',duration:'',dialogue:'',visual:'',hint:'',text:'',media:[]}]}))
+    acts:[1,2,3].map(n=>({id:newMediaId(),name:'Act '+n,cards:[{id:newMediaId(),title:'',hint:'',text:'',media:[]}]}))
+  };
+}
+function defaultTimedScriptData(){
+  return {
+    story:'',
+    summary:'',
+    storyPrompt:'',
+    acts:[{id:newMediaId(),name:'ACT 1: SETUP',cards:[{id:newMediaId(),title:'Opening beat',purpose:'',timing:'00:00-00:15',duration:'15 sec',dialogue:'',visual:'',hint:'Introduce the character, theme, and first visual idea.',text:'',media:[]}]}]
   };
 }
 function normalizeScriptData(data){
@@ -1302,6 +1312,17 @@ function loadScriptData(){
 }
 function saveScriptData(){
   boardSet('jdb_script',JSON.stringify(localScriptRecord(scriptData)));
+  touchStoryboard();
+}
+function loadTimedScriptData(){
+  try{
+    const raw=boardGet('jdb_timed_script');
+    if(raw)return normalizeScriptData(JSON.parse(raw));
+  }catch(e){}
+  return defaultTimedScriptData();
+}
+function saveTimedScriptData(){
+  boardSet('jdb_timed_script',JSON.stringify(localScriptRecord(timedScriptData)));
   touchStoryboard();
 }
 function normalizeScriptTemplate(template){
@@ -1486,6 +1507,10 @@ function sharedBoardValue(key,value){
   if(key==='jdb_script'){
     try{return JSON.stringify(withoutSharedHeavyScript(JSON.parse(value)));}catch(e){}
     return JSON.stringify(defaultScriptData());
+  }
+  if(key==='jdb_timed_script'){
+    try{return JSON.stringify(withoutSharedHeavyScript(JSON.parse(value)));}catch(e){}
+    return JSON.stringify(defaultTimedScriptData());
   }
   if(key==='jdb_assets'){
     try{return JSON.stringify(withoutSharedHeavyAssets(JSON.parse(value)));}catch(e){}
@@ -1753,6 +1778,7 @@ function reloadBoardState(){
   videoOverview=boardGet('jdb_video_overview')||'';
   moodboard=loadMoodboard();
   scriptData=loadScriptData();
+  timedScriptData=loadTimedScriptData();
   assetsData=loadAssetsData();
   viewSettings=loadViewSettings();
   boardView=loadBoardView();
@@ -2201,7 +2227,7 @@ async function syncLocalMediaToCloud({notify=true}={}){
   for(const item of moodboard)await syncItem(item);
   for(const item of scriptMediaItems())await syncItem(item);
   for(const item of assetMediaItems())await syncItem(item);
-  if(changed){save();saveMoodboard();saveScriptData();saveAssetsData();}
+  if(changed){save();saveMoodboard();saveScriptData();saveTimedScriptData();saveAssetsData();}
   const counts=mediaCloudCounts();
   lastMediaSyncResult={uploaded,failed,localOnly:counts.local,total:counts.total,configured:true,errors};
   if(notify){
@@ -3680,27 +3706,37 @@ function setGroup(field){
   });
   render();
 }
-function addScriptAct(){
+function addStoryAct(){
   if(viewOnlyMode)return;
-  scriptData.acts.push({id:newMediaId(),name:'Act '+(scriptData.acts.length+1),cards:[{id:newMediaId(),title:'',purpose:'',timing:'',duration:'',dialogue:'',visual:'',hint:'',text:'',media:[]}]});
+  scriptData.acts.push({id:newMediaId(),name:'Act '+(scriptData.acts.length+1),cards:[{id:newMediaId(),title:'',hint:'',text:'',media:[]}]});
   saveScriptData();render();toast('Act added');
 }
-function renameScriptAct(act){
+function addTimedScriptAct(){
+  if(viewOnlyMode)return;
+  timedScriptData.acts.push({id:newMediaId(),name:'ACT '+(timedScriptData.acts.length+1),cards:[{id:newMediaId(),title:'',purpose:'',timing:'',duration:'',dialogue:'',visual:'',hint:'',text:'',media:[]}]});
+  saveTimedScriptData();render();toast('Script act added');
+}
+function renameScriptAct(act,saveFn=saveScriptData){
   if(viewOnlyMode)return;
   const name=(prompt('Act name:',act.name)||'').trim();
   if(!name)return;
-  act.name=name;saveScriptData();render();
+  act.name=name;saveFn();render();
 }
-function addScriptCard(act){
+function addStoryCard(act){
   if(viewOnlyMode)return;
-  act.cards.push({id:newMediaId(),title:'',purpose:'',timing:'',duration:'',dialogue:'',visual:'',hint:'',text:'',media:[]});
+  act.cards.push({id:newMediaId(),title:'',hint:'',text:'',media:[]});
   saveScriptData();render();
 }
-function deleteScriptCard(act,card){
+function addTimedScriptCard(act){
+  if(viewOnlyMode)return;
+  act.cards.push({id:newMediaId(),title:'',purpose:'',timing:'',duration:'',dialogue:'',visual:'',hint:'',text:'',media:[]});
+  saveTimedScriptData();render();
+}
+function deleteScriptCard(act,card,saveFn=saveScriptData){
   if(viewOnlyMode||act.cards.length<2)return;
   if(!confirm('Delete this script card?'))return;
   act.cards=act.cards.filter(item=>item.id!==card.id);
-  saveScriptData();render();
+  saveFn();render();
 }
 function addScriptMedia(card){
   if(viewOnlyMode)return;
@@ -3757,7 +3793,7 @@ function saveCurrentScriptAsTemplate(){
   render();toast('Template saved');
 }
 function scriptCardsFlat(){
-  return (scriptData.acts||[]).flatMap(act=>(act.cards||[]).map(card=>({act,card})));
+  return (timedScriptData.acts||[]).flatMap(act=>(act.cards||[]).map(card=>({act,card})));
 }
 function renderScriptTimeline(wrap){
   const items=scriptCardsFlat().filter(item=>item.card.timing||item.card.title||item.card.purpose);
@@ -3791,7 +3827,7 @@ function generateCardsFromScript(){
   scenes=replace?generated:[...scenes,...generated];
   syncOptionsFromScenes();save();setBoardView('cards');toast('Generated '+generated.length+' card'+(generated.length!==1?'s':'')+' from Script');
 }
-function renderScriptView(board){
+function renderStoryView(board){
   scriptData=normalizeScriptData(scriptData);
   const wrap=document.createElement('div');wrap.className='script-wrap';
   const story=document.createElement('div');story.className='script-story';
@@ -3812,18 +3848,15 @@ function renderScriptView(board){
     apply.onclick=()=>applyScriptTemplate(templateSelect.value);
     const saveTemplate=document.createElement('button');saveTemplate.className='btn btn-sm';saveTemplate.textContent='Save current as template';
     saveTemplate.onclick=saveCurrentScriptAsTemplate;
-    const generate=document.createElement('button');generate.className='btn btn-primary';generate.textContent='Generate cards from script';
-    generate.onclick=generateCardsFromScript;
-    tools.appendChild(templateSelect);tools.appendChild(apply);tools.appendChild(saveTemplate);tools.appendChild(generate);story.appendChild(tools);
+    tools.appendChild(templateSelect);tools.appendChild(apply);tools.appendChild(saveTemplate);story.appendChild(tools);
   }
-  renderScriptTimeline(wrap);
   scriptData.acts.forEach((act,actIndex)=>{
     const actEl=document.createElement('section');actEl.className='script-act';
     const hdr=document.createElement('div');hdr.className='script-act-hdr';
-    const name=document.createElement('div');name.className='script-act-name';name.textContent=act.name||('Act '+(actIndex+1));name.onclick=()=>renameScriptAct(act);
+    const name=document.createElement('div');name.className='script-act-name';name.textContent=act.name||('Act '+(actIndex+1));name.onclick=()=>renameScriptAct(act,saveScriptData);
     hdr.appendChild(name);
     if(!viewOnlyMode){
-      const add=document.createElement('button');add.className='btn btn-sm';add.textContent='+ Card';add.onclick=()=>addScriptCard(act);hdr.appendChild(add);
+      const add=document.createElement('button');add.className='btn btn-sm';add.textContent='+ Card';add.onclick=()=>addStoryCard(act);hdr.appendChild(add);
     }
     actEl.appendChild(hdr);
     const grid=document.createElement('div');grid.className='script-card-grid';
@@ -3831,31 +3864,12 @@ function renderScriptView(board){
       const cardEl=document.createElement('article');cardEl.className='script-card';
       const title=document.createElement('input');title.placeholder='Sequence title';title.value=card.title||'';title.disabled=viewOnlyMode;
       title.oninput=()=>{card.title=title.value;saveScriptData();};
-      const meta=document.createElement('div');meta.className='script-card-meta';
-      const timingWrap=document.createElement('div');
-      const timingLabel=document.createElement('div');timingLabel.className='script-field-label';timingLabel.textContent='Timing';
-      const timing=document.createElement('input');timing.placeholder='00:00-00:15';timing.value=card.timing||'';timing.disabled=viewOnlyMode;
-      timing.oninput=()=>{card.timing=timing.value;saveScriptData();};
-      timingWrap.appendChild(timingLabel);timingWrap.appendChild(timing);
-      const durationWrap=document.createElement('div');
-      const durationLabel=document.createElement('div');durationLabel.className='script-field-label';durationLabel.textContent='Estimated duration';
-      const duration=document.createElement('input');duration.placeholder='15 sec';duration.value=card.duration||'';duration.disabled=viewOnlyMode;
-      duration.oninput=()=>{card.duration=duration.value;saveScriptData();};
-      durationWrap.appendChild(durationLabel);durationWrap.appendChild(duration);
-      meta.appendChild(timingWrap);meta.appendChild(durationWrap);
-      const purposeLabel=document.createElement('div');purposeLabel.className='script-field-label';purposeLabel.textContent='Story purpose';
-      const purpose=document.createElement('textarea');purpose.placeholder=card.hint||'What does this beat do for the story?';purpose.value=card.purpose||'';purpose.disabled=viewOnlyMode;
-      purpose.oninput=()=>{card.purpose=purpose.value;saveScriptData();};
-      const dialogueLabel=document.createElement('div');dialogueLabel.className='script-field-label';dialogueLabel.textContent='Dialogue / narration';
-      const dialogue=document.createElement('textarea');dialogue.className='dialogue';dialogue.placeholder='CHARACTER\nDialogue, voiceover, narration...';dialogue.value=card.dialogue||'';dialogue.disabled=viewOnlyMode;
-      dialogue.oninput=()=>{card.dialogue=dialogue.value;card.text=dialogue.value;saveScriptData();};
-      const visualLabel=document.createElement('div');visualLabel.className='script-field-label';visualLabel.textContent='Visual notes';
-      const visual=document.createElement('textarea');visual.className='visual';visual.placeholder='Open front door\nBackflip transition\nMove into animation';visual.value=card.visual||'';visual.disabled=viewOnlyMode;
-      visual.oninput=()=>{card.visual=visual.value;saveScriptData();};
-      cardEl.appendChild(title);cardEl.appendChild(meta);cardEl.appendChild(purposeLabel);cardEl.appendChild(purpose);cardEl.appendChild(dialogueLabel);cardEl.appendChild(dialogue);cardEl.appendChild(visualLabel);cardEl.appendChild(visual);
+      const text=document.createElement('textarea');text.placeholder=card.hint||'Write the scenes for this part...';text.value=card.text||card.dialogue||'';text.disabled=viewOnlyMode;
+      text.oninput=()=>{card.text=text.value;saveScriptData();};
+      cardEl.appendChild(title);cardEl.appendChild(text);
       if(!viewOnlyMode){
         const actions=document.createElement('div');actions.className='script-card-actions';
-        const del=document.createElement('button');del.className='card-del-btn';del.textContent='Delete';del.onclick=()=>deleteScriptCard(act,card);
+        const del=document.createElement('button');del.className='card-del-btn';del.textContent='Delete';del.onclick=()=>deleteScriptCard(act,card,saveScriptData);
         actions.appendChild(del);cardEl.appendChild(actions);
       }
       grid.appendChild(cardEl);
@@ -3863,7 +3877,67 @@ function renderScriptView(board){
     actEl.appendChild(grid);wrap.appendChild(actEl);
   });
   if(!viewOnlyMode){
-    const addAct=document.createElement('button');addAct.className='btn btn-primary';addAct.textContent='+ Add act';addAct.onclick=addScriptAct;wrap.appendChild(addAct);
+    const addAct=document.createElement('button');addAct.className='btn btn-primary';addAct.textContent='+ Add act';addAct.onclick=addStoryAct;wrap.appendChild(addAct);
+  }
+  board.appendChild(wrap);
+}
+function renderScriptView(board){
+  timedScriptData=normalizeScriptData(timedScriptData);
+  const wrap=document.createElement('div');wrap.className='script-wrap';
+  if(!viewOnlyMode){
+    const tools=document.createElement('div');tools.className='script-tools';
+    const generate=document.createElement('button');generate.className='btn btn-primary';generate.textContent='Generate cards from script';
+    generate.onclick=generateCardsFromScript;
+    tools.appendChild(generate);wrap.appendChild(tools);
+  }
+  renderScriptTimeline(wrap);
+  timedScriptData.acts.forEach((act,actIndex)=>{
+    const actEl=document.createElement('section');actEl.className='script-act';
+    const hdr=document.createElement('div');hdr.className='script-act-hdr';
+    const name=document.createElement('div');name.className='script-act-name';name.textContent=act.name||('Act '+(actIndex+1));name.onclick=()=>renameScriptAct(act,saveTimedScriptData);
+    hdr.appendChild(name);
+    if(!viewOnlyMode){
+      const add=document.createElement('button');add.className='btn btn-sm';add.textContent='+ Beat';add.onclick=()=>addTimedScriptCard(act);hdr.appendChild(add);
+    }
+    actEl.appendChild(hdr);
+    const grid=document.createElement('div');grid.className='script-card-grid';
+    act.cards.forEach(card=>{
+      const cardEl=document.createElement('article');cardEl.className='script-card';
+      const title=document.createElement('input');title.placeholder='Script beat title';title.value=card.title||'';title.disabled=viewOnlyMode;
+      title.oninput=()=>{card.title=title.value;saveTimedScriptData();};
+      const meta=document.createElement('div');meta.className='script-card-meta';
+      const timingWrap=document.createElement('div');
+      const timingLabel=document.createElement('div');timingLabel.className='script-field-label';timingLabel.textContent='Timing';
+      const timing=document.createElement('input');timing.placeholder='00:00-00:15';timing.value=card.timing||'';timing.disabled=viewOnlyMode;
+      timing.oninput=()=>{card.timing=timing.value;saveTimedScriptData();};
+      timingWrap.appendChild(timingLabel);timingWrap.appendChild(timing);
+      const durationWrap=document.createElement('div');
+      const durationLabel=document.createElement('div');durationLabel.className='script-field-label';durationLabel.textContent='Estimated duration';
+      const duration=document.createElement('input');duration.placeholder='15 sec';duration.value=card.duration||'';duration.disabled=viewOnlyMode;
+      duration.oninput=()=>{card.duration=duration.value;saveTimedScriptData();};
+      durationWrap.appendChild(durationLabel);durationWrap.appendChild(duration);
+      meta.appendChild(timingWrap);meta.appendChild(durationWrap);
+      const purposeLabel=document.createElement('div');purposeLabel.className='script-field-label';purposeLabel.textContent='Story purpose';
+      const purpose=document.createElement('textarea');purpose.placeholder='Introduce gratitude as the theme.';purpose.value=card.purpose||'';purpose.disabled=viewOnlyMode;
+      purpose.oninput=()=>{card.purpose=purpose.value;saveTimedScriptData();};
+      const dialogueLabel=document.createElement('div');dialogueLabel.className='script-field-label';dialogueLabel.textContent='Dialogue';
+      const dialogue=document.createElement('textarea');dialogue.className='dialogue';dialogue.placeholder='MARIAM\nHi everyone. Welcome to my Bat Mitzvah.\n\nMARIAM (V.O.)\nThe first words a Jew says every morning are Modeh Ani...';dialogue.value=card.dialogue||'';dialogue.disabled=viewOnlyMode;
+      dialogue.oninput=()=>{card.dialogue=dialogue.value;card.text=dialogue.value;saveTimedScriptData();};
+      const visualLabel=document.createElement('div');visualLabel.className='script-field-label';visualLabel.textContent='Visual notes';
+      const visual=document.createElement('textarea');visual.className='visual';visual.placeholder='Mariam opens the door.\nBackflip transition.\nMove into animation.';visual.value=card.visual||'';visual.disabled=viewOnlyMode;
+      visual.oninput=()=>{card.visual=visual.value;saveTimedScriptData();};
+      cardEl.appendChild(title);cardEl.appendChild(meta);cardEl.appendChild(purposeLabel);cardEl.appendChild(purpose);cardEl.appendChild(dialogueLabel);cardEl.appendChild(dialogue);cardEl.appendChild(visualLabel);cardEl.appendChild(visual);
+      if(!viewOnlyMode){
+        const actions=document.createElement('div');actions.className='script-card-actions';
+        const del=document.createElement('button');del.className='card-del-btn';del.textContent='Delete';del.onclick=()=>deleteScriptCard(act,card,saveTimedScriptData);
+        actions.appendChild(del);cardEl.appendChild(actions);
+      }
+      grid.appendChild(cardEl);
+    });
+    actEl.appendChild(grid);wrap.appendChild(actEl);
+  });
+  if(!viewOnlyMode){
+    const addAct=document.createElement('button');addAct.className='btn btn-primary';addAct.textContent='+ Add script act';addAct.onclick=addTimedScriptAct;wrap.appendChild(addAct);
   }
   board.appendChild(wrap);
 }
@@ -4305,7 +4379,7 @@ function render(){
   renderPanel();renderMoodboard();applyFilters();
 }
 
-function renderStoryView(board){
+function renderSceneStoryView(board){
   const wrap=document.createElement('div');wrap.className='story-wrap';
   wrap.appendChild(makeStoryOverview());
   acts.forEach(act=>{

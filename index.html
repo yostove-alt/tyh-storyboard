@@ -1928,6 +1928,15 @@ async function applySharedSnapshot(snapshot,{silent=false}={}){
   if(!silent)toast('Shared boards loaded');
   return true;
 }
+function localChangesNewerThanSnapshot(snapshot){
+  if(!snapshot||!Array.isArray(snapshot.storyboards))return false;
+  const sharedTimes=new Map(snapshot.storyboards.map(board=>[board.id,Number(board.updatedAt||board.createdAt||0)]));
+  return storyboards.some(board=>{
+    const localTime=Number(board.updatedAt||board.createdAt||0);
+    const sharedTime=sharedTimes.get(board.id)||0;
+    return localTime&&sharedTime&&localTime>sharedTime+500;
+  });
+}
 async function loadSharedBoards({silent=false,force=false}={}){
   if(cloudConfigured()){
     const loaded=await loadSharedBoardsFromSupabase({silent,force});
@@ -1939,6 +1948,7 @@ async function loadSharedBoards({silent=false,force=false}={}){
     const snapshot=await response.json();
     const loaded=parseInt(localStorage.getItem(CLOUD_LOADED_KEY)||'0',10);
     if(!force&&loaded&&snapshot.updatedAt&&snapshot.updatedAt<=loaded)return false;
+    if(!force&&localChangesNewerThanSnapshot(snapshot))return false;
     return await applySharedSnapshot(snapshot,{silent});
   }catch(e){
     if(!silent)toast('Could not load shared boards');
@@ -2301,6 +2311,7 @@ async function loadSharedBoardsFromSupabase({silent=false,force=false}={}){
     const snapshot=rows[0].data;
     const loaded=parseInt(localStorage.getItem(CLOUD_LOADED_KEY)||'0',10);
     if(!force&&loaded&&snapshot.updatedAt&&snapshot.updatedAt<=loaded)return false;
+    if(!force&&localChangesNewerThanSnapshot(snapshot))return false;
     return await applySharedSnapshot(snapshot,{silent});
   }catch(e){
     if(!silent)toast('Could not load shared boards');

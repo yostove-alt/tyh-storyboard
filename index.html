@@ -122,6 +122,10 @@ body.panel-closed .panel-rail{left:0;}
 .chat-input{flex:1;min-height:70px;max-height:150px;resize:vertical;font-family:'Instrument Sans',sans-serif;font-size:13px;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:var(--rs);padding:9px 10px;outline:none;line-height:1.45;}
 .chat-input:focus{border-color:var(--accent);background:var(--accent-l);}
 .chat-send{height:38px;align-self:flex-end;}
+.chat-mic{width:38px;height:38px;align-self:flex-end;border:1px solid var(--border);border-radius:var(--rs);background:var(--surface);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;}
+.chat-mic:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-l);}
+.chat-mic.listening{border-color:var(--accent);background:var(--accent);color:#fff;box-shadow:0 0 0 3px rgba(23,74,54,.14);}
+.chat-mic svg{width:17px;height:17px;display:block;}
 .mention-picker{position:absolute;left:0;right:74px;bottom:calc(100% + 6px);max-height:260px;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:0 16px 44px rgba(25,35,22,.18);z-index:50;padding:6px;display:flex;flex-direction:column;gap:5px;}
 .mention-option{display:grid;grid-template-columns:42px minmax(0,1fr);gap:8px;align-items:center;border:1px solid transparent;border-radius:var(--rs);background:transparent;text-align:left;padding:5px;color:var(--text);cursor:pointer;font-family:'Instrument Sans',sans-serif;}
 .mention-option:hover{border-color:var(--border);background:var(--accent-l);}
@@ -1149,6 +1153,8 @@ let selectedScriptCardIds=new Set();
 let selectedAssetCardIds=new Set();
 let agentPromptReferences=[];
 let fullScriptOpen=false;
+let agentRecognition=null;
+let agentRecognitionListening=false;
 let chatMessages=[{role:'assistant',text:'Board ready.'}];
 let claudeMessages=[{role:'assistant',text:'Claude board chat ready.'}];
 let activeAgentProvider=loadAgentProvider();
@@ -2789,9 +2795,57 @@ function renderAIChat(b,provider){
   const mentionPicker=document.createElement('div');mentionPicker.className='mention-picker';mentionPicker.style.display='none';
   attachMentionPicker(input,mentionPicker);
   input.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat(input.value,provider);}};
+  const mic=createAgentMicButton(input);
   const send=document.createElement('button');send.className='btn btn-primary chat-send';send.textContent='Send';send.onclick=()=>sendChat(input.value,provider);
-  box.appendChild(input);box.appendChild(mentionPicker);box.appendChild(send);w.appendChild(cfg);w.appendChild(renderAgentReferenceTray());w.appendChild(log);w.appendChild(box);b.appendChild(w);
+  box.appendChild(input);box.appendChild(mentionPicker);box.appendChild(mic);box.appendChild(send);w.appendChild(cfg);w.appendChild(renderAgentReferenceTray());w.appendChild(log);w.appendChild(box);b.appendChild(w);
   requestAnimationFrame(()=>{log.scrollTop=log.scrollHeight;input.focus();});
+}
+
+function createAgentMicButton(input){
+  const btn=document.createElement('button');btn.type='button';btn.className='chat-mic';btn.title='Dictate to Agent';
+  btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/><path d="M8 22h8"/></svg>';
+  const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SpeechRecognition){
+    btn.disabled=true;btn.title='Speech dictation is not available in this browser';
+    return btn;
+  }
+  btn.onclick=()=>{
+    if(agentRecognitionListening&&agentRecognition){agentRecognition.stop();return;}
+    const recognition=new SpeechRecognition();
+    agentRecognition=recognition;
+    agentRecognitionListening=true;
+    btn.classList.add('listening');
+    btn.title='Listening. Click to stop.';
+    recognition.lang=navigator.language||'en-US';
+    recognition.interimResults=true;
+    recognition.continuous=true;
+    const base=input.value.trim();
+    let finalText='';
+    recognition.onresult=event=>{
+      let interim='';
+      for(let i=event.resultIndex;i<event.results.length;i++){
+        const transcript=event.results[i][0]?.transcript||'';
+        if(event.results[i].isFinal)finalText+=(finalText?' ':'')+transcript.trim();
+        else interim+=(interim?' ':'')+transcript.trim();
+      }
+      const spoken=[finalText,interim].filter(Boolean).join(' ').trim();
+      input.value=[base,spoken].filter(Boolean).join(base&&spoken?'\n':'');
+      input.focus();
+      input.selectionStart=input.selectionEnd=input.value.length;
+    };
+    recognition.onerror=e=>{
+      toast('Mic error: '+(e.error||'speech recognition failed'),4200);
+    };
+    recognition.onend=()=>{
+      agentRecognitionListening=false;
+      agentRecognition=null;
+      btn.classList.remove('listening');
+      btn.title='Dictate to Agent';
+    };
+    try{recognition.start();}
+    catch(e){agentRecognitionListening=false;btn.classList.remove('listening');toast('Mic could not start',3200);}
+  };
+  return btn;
 }
 
 function renderAgentReferenceTray(){

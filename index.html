@@ -4848,7 +4848,7 @@ function renderAssetDetail(section,card){
   return detail;
 }
 function renderAssetsView(board){
-  assetsData=normalizeAssetsData(assetsData);
+  assetsData=loadAssetsData();
   const wrap=document.createElement('div');wrap.className='assets-wrap';
   const intro=document.createElement('div');intro.className='assets-intro';
   intro.innerHTML='<div class="script-label">Assets</div><div style="font-size:13px;color:var(--muted);line-height:1.45;margin-bottom:10px;">Track design tasks, revisions, and approved finals for characters, props, and locations. Media here stays out of the Animatic.</div>';

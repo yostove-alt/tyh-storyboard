@@ -1530,8 +1530,8 @@ function sharedBoardValue(key,value){
   if(key==='jdb_assets'){
     const localOnly=assetLocalOnlyCount();
     if(localOnly)throw new Error(localOnly+' asset media file(s) are still local-only. Cloud upload must finish before saving shared.');
-    try{return JSON.stringify(withoutSharedHeavyAssets(JSON.parse(value)));}catch(e){}
-    return JSON.stringify(defaultAssetsData());
+    try{return JSON.stringify(withoutSharedHeavyAssets(JSON.parse(value)));}
+    catch(e){throw new Error('Could not prepare Assets for shared save: '+((e&&e.message)||'unknown error'));}
   }
   if(key!=='jdb_v4')return value;
   try{
@@ -1899,12 +1899,13 @@ async function collectSharedSnapshot(){
   const assetLocal=assetLocalOnlyCount();
   if(assetLocal)throw new Error(assetLocal+' asset media file(s) are still local-only. Check Supabase Storage, then try Save shared again.');
   normalizeCloudMediaReferences();
-  save();
+  save();saveAssetsData();saveMoodboard();saveScriptData();saveTimedScriptData();
   const boards={};
   for(const board of storyboards){
     boards[board.id]={};
     LEGACY_BOARD_KEYS.forEach(key=>{
-      const value=boardStoredValue(board.id,key);
+      let value=boardStoredValue(board.id,key);
+      if(board.id===activeStoryboardId&&key==='jdb_assets')value=JSON.stringify(localAssetsRecord(assetsData));
       if(value!==null)boards[board.id][key]=sharedBoardValue(key,value);
     });
   }

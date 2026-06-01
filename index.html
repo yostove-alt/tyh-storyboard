@@ -408,6 +408,7 @@ body.mood-closed .mood-rail{right:0;}
 .add-scene-card svg{width:20px;height:20px;}
 .add-scene-card span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;}
 .add-scene-card:hover{border-color:var(--accent);background:var(--accent-l);color:var(--accent);transform:translateY(-1px);}
+.add-scene-card.drag-over{border-color:var(--accent);background:var(--accent-l);box-shadow:0 0 0 3px rgba(42,92,63,.15);}
 .add-act-row{display:flex;justify-content:center;margin:6px 0 20px;}
 .add-act-btn{display:flex;align-items:center;gap:6px;padding:7px 18px;background:var(--surface);border:1.5px dashed var(--border);border-radius:var(--r);font-size:12px;color:var(--faint);cursor:pointer;font-family:'Instrument Sans',sans-serif;transition:all .15s;}
 .add-act-btn:hover{border-color:var(--gold);color:var(--gold);background:var(--gold-l);}
@@ -418,6 +419,7 @@ body.mood-closed .mood-rail{right:0;}
 .scene-card.dropdown-open{z-index:80;overflow:visible;}
 .scene-card.dragging{opacity:.35;border:2px dashed var(--accent);}
 .scene-card.drag-over{border:2px solid var(--accent);box-shadow:0 0 0 3px rgba(42,92,63,.15);}
+.scene-grid.drag-over{outline:2px dashed var(--accent);outline-offset:6px;border-radius:var(--r);background:rgba(42,92,63,.05);}
 .scene-card.hidden{display:none;}
 .scene-card.is-selected{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-l),var(--shadow);}
 .scene-select{position:absolute;left:9px;top:9px;z-index:30;width:20px;height:20px;border:1px solid var(--border-strong);border-radius:5px;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,0,0,.08);}
@@ -3230,7 +3232,37 @@ async function fileFromGeneratedImageItem(item,name){
   }
   return null;
 }
-async function generateOpenAIImageFile(prompt,{name='ai-storyboard-image.png',size='1536x1024'}={}){
+function selectedAssetReferenceMedia(){
+  return selectedAssets().flatMap(({section,card})=>[...(card.references||[]),...(card.finals||[])]
+    .filter(item=>item&&item.type!=='video'&&isCloudMedia(item))
+    .map(item=>({section:section.name||'',asset:card.title||'',name:item.name||'',url:item.url||storagePublicUrl(item.storagePath),storagePath:item.storagePath||'',type:item.type||'image'}))
+  ).slice(0,4);
+}
+function referencePromptText(refs){
+  if(!refs.length)return '';
+  return '\n\nUse these selected asset reference images for likeness, design continuity, wardrobe, props, or location details:\n'+refs.map((ref,i)=>(i+1)+'. '+[ref.section,ref.asset,ref.name].filter(Boolean).join(' / ')+' — '+ref.url).join('\n');
+}
+async function blobToBase64(blob){
+  return await new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(String(reader.result||'').split(',')[1]||'');
+    reader.onerror=()=>reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+async function geminiReferenceParts(refs){
+  const parts=[];
+  for(const ref of refs){
+    try{
+      const response=await fetch(ref.url);
+      if(!response.ok)continue;
+      const blob=await response.blob();
+      parts.push({inlineData:{mimeType:blob.type||'image/png',data:await blobToBase64(blob)}});
+    }catch(e){}
+  }
+  return parts;
+}
+async function generateOpenAIImageFile(prompt,{name='ai-storyboard-image.png',size='1536x1024',refs=[]}={}){
   const key=getOpenAIKey();
   if(!key)throw new Error('Add an OpenAI API key in the Agent tab to generate images.');
   const response=await fetch('https://api.openai.com/v1/images/generations',{
@@ -3238,7 +3270,7 @@ async function generateOpenAIImageFile(prompt,{name='ai-storyboard-image.png',si
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
     body:JSON.stringify({
       model:'gpt-image-2',
-      prompt,
+      prompt:prompt+referencePromptText(refs),
       size:normalizeImageSize(size),
       n:1
     })
@@ -3253,15 +3285,16 @@ async function generateOpenAIImageFile(prompt,{name='ai-storyboard-image.png',si
   if(!file)throw new Error('OpenAI did not return an image file.');
   return file;
 }
-async function generateGeminiImageFile(prompt,{name='ai-storyboard-image.png',size='1536x1024'}={}){
+async function generateGeminiImageFile(prompt,{name='ai-storyboard-image.png',size='1536x1024',refs=[]}={}){
   const key=getGeminiKey();
   if(!key)throw new Error('Add a Gemini API key in the Agent tab to use Nano Banana Pro.');
   const ratio=geminiAspectRatio(size);
+  const refParts=await geminiReferenceParts(refs);
   const response=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image:generateContent',{
     method:'POST',
     headers:{'Content-Type':'application/json','x-goog-api-key':key},
     body:JSON.stringify({
-      contents:[{parts:[{text:'Create one finished image. Aspect ratio: '+ratio+'. '+prompt}]}]
+      contents:[{parts:[{text:'Create one finished image. Aspect ratio: '+ratio+'. '+prompt+(refParts.length?' Use the attached reference image(s) for consistent likeness and design.':'')},...refParts]}]
     })
   });
   if(!response.ok){
@@ -3279,10 +3312,10 @@ async function generateGeminiImageFile(prompt,{name='ai-storyboard-image.png',si
   if(!file)throw new Error('Nano Banana Pro returned an unreadable image.');
   return file;
 }
-async function mediaItemFromGeneratedImage(prompt,{name='ai-storyboard-image.png',size='1536x1024'}={}){
+async function mediaItemFromGeneratedImage(prompt,{name='ai-storyboard-image.png',size='1536x1024',refs=[]}={}){
   const file=getImageGenerator()==='gemini-nano-banana-pro'
-    ? await generateGeminiImageFile(prompt,{name,size})
-    : await generateOpenAIImageFile(prompt,{name,size});
+    ? await generateGeminiImageFile(prompt,{name,size,refs})
+    : await generateOpenAIImageFile(prompt,{name,size,refs});
   const storedId=newMediaId();
   await setStoredMedia(storedId,{blob:file,type:file.type||'image/png',name:file.name,size:file.size,updatedAt:Date.now()});
   const media={url:URL.createObjectURL(file),type:'image',name:file.name,storedId,size:file.size};
@@ -3304,15 +3337,16 @@ async function chatGenerateImages(action){
   const count=Math.max(1,Math.min(4,parseInt(action.count||action.n||1,10)||1));
   const size=normalizeImageSize(action.size||'1536x1024');
   const baseName=action.name||action.title||'ai-storyboard-image';
+  const refs=selectedAssetReferenceMedia();
   const generated=[];
   for(let i=0;i<count;i++){
-    generated.push(await mediaItemFromGeneratedImage(prompt,{name:cleanGeneratedImageName(baseName,i+1),size}));
+    generated.push(await mediaItemFromGeneratedImage(prompt,{name:cleanGeneratedImageName(baseName,i+1),size,refs}));
   }
   targets.forEach(scene=>{
     scene.media=[...(scene.media||[]),...generated.map(item=>({...item}))];
   });
   save();render();
-  return 'Generated '+plural(generated.length,'image')+' and attached '+(generated.length===1?'it':'them')+' to '+plural(targets.length,'card')+'.';
+  return 'Generated '+plural(generated.length,'image')+' and attached '+(generated.length===1?'it':'them')+' to '+plural(targets.length,'card')+(refs.length?' using '+plural(refs.length,'selected asset reference'):'')+'.';
 }
 function chatDeleteScenes(scopeRaw){
   const targets=scenesForScope(scopeRaw||'selected');
@@ -3455,7 +3489,7 @@ function boardAgentInstructions(){
     'When the user asks you to make, generate, create, attach, or add an image, concept image, reference image, storyboard frame, character image, prop image, or location image, use generate_image. Use scope "selected" for selected cards unless the user names a different target.',
     'The app will generate images with the selected image generator in the Agent panel: GPT Image 2 or Nano Banana Pro.',
     'Write image prompts as complete production art direction: subject, setting, mood, composition, camera angle, lighting, style, and any visible text if needed.',
-    'Use selected Story cards, Script beats, Assets, and scene cards as the user’s intended context. If selected assets include media URLs, treat them as visual references and describe their important details in the prompt or text you apply.',
+    'Use selected Story cards, Script beats, Assets, and scene cards as the user’s intended context. If selected assets include media URLs, treat them as visual references and describe their important details in the prompt or text you apply. The app will attach selected asset images as references for Nano Banana Pro image generation.',
     'For shot ideas, prefer add_shots or set_field with field "Key shots" and mode "append". Keep each shot short, visual, and filmable.',
     'For deleting/clearing, use clear_field, remove_text, delete_scene, or delete_scenes. Do not ask for confirmation in JSON; the app treats your action as the requested change.',
     'Prefer exact existing act/location/status/camera names from the board context.',
@@ -4913,6 +4947,40 @@ function getGroups(field){
   const preferred=field==='location'?locations:field==='status'?statuses:field==='camera'?cameras:[];
   return uniqueList([...preferred.filter(v=>present.includes(v)),...present]);
 }
+function moveDraggedSceneToAct(act,{beforeId=null}={}){
+  if(!dragId)return false;
+  const movingIndex=scenes.findIndex(scene=>scene.id===dragId);
+  if(movingIndex<0)return false;
+  const moving=scenes.splice(movingIndex,1)[0];
+  moving.act=act||moving.act;
+  let insertIndex=scenes.length;
+  if(beforeId!==null){
+    const targetIndex=scenes.findIndex(scene=>scene.id===beforeId);
+    if(targetIndex>=0)insertIndex=targetIndex;
+  }else if(act){
+    const last=[...scenes].map((scene,i)=>scene.act===act?i:-1).filter(i=>i>=0).pop();
+    insertIndex=last===undefined?scenes.length:last+1;
+  }
+  scenes.splice(insertIndex,0,moving);
+  syncOptionsFromScenes();save();render();toast('Scene moved to '+moving.act);
+  return true;
+}
+function enableActSceneDrop(grid,act){
+  grid.addEventListener('dragover',e=>{
+    if(!dragId)return;
+    e.preventDefault();
+    grid.classList.add('drag-over');
+  });
+  grid.addEventListener('dragleave',e=>{
+    if(!grid.contains(e.relatedTarget))grid.classList.remove('drag-over');
+  });
+  grid.addEventListener('drop',e=>{
+    if(!dragId)return;
+    e.preventDefault();e.stopPropagation();
+    grid.classList.remove('drag-over');
+    moveDraggedSceneToAct(act);
+  });
+}
 
 function render(){
   swiperControllers.clear();
@@ -4962,6 +5030,7 @@ function render(){
       const count=document.createElement('span');count.style.cssText='margin-left:auto;font-size:10px;color:var(--faint);';count.textContent=grpScenes.length+' scene'+(grpScenes.length!==1?'s':'');
       hdr.appendChild(dot);hdr.appendChild(nameEl);hdr.appendChild(count);block.appendChild(hdr);
       const grid=document.createElement('div');grid.className='scene-grid';
+      if(groupBy==='act')enableActSceneDrop(grid,grp);
       grpScenes.forEach(scene=>{grid.appendChild(makeCard(scene));});
       if(groupBy==='act')grid.appendChild(makeAddSceneTile(grp));
       block.appendChild(grid);
@@ -5409,6 +5478,9 @@ function makeAddSceneTile(act){
   tile.className='add-scene-card';
   tile.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add scene</span>';
   tile.onclick=()=>addSceneToAct(act);
+  tile.addEventListener('dragover',e=>{if(dragId){e.preventDefault();tile.classList.add('drag-over');}});
+  tile.addEventListener('dragleave',()=>tile.classList.remove('drag-over'));
+  tile.addEventListener('drop',e=>{if(!dragId)return;e.preventDefault();e.stopPropagation();tile.classList.remove('drag-over');moveDraggedSceneToAct(act);});
   return tile;
 }
 
@@ -5422,9 +5494,10 @@ function makeCard(scene){
   card.addEventListener('dragover',e=>{e.preventDefault();if(moodDragId)card.classList.add('mood-drop-target');else if(dragId&&dragId!==scene.id)card.classList.add('drag-over');});
   card.addEventListener('dragleave',()=>{card.classList.remove('drag-over');card.classList.remove('mood-drop-target');});
   card.addEventListener('drop',e=>{
-    e.preventDefault();card.classList.remove('drag-over');card.classList.remove('mood-drop-target');
+    e.preventDefault();e.stopPropagation();card.classList.remove('drag-over');card.classList.remove('mood-drop-target');
     if(moodDragId){addMoodMediaToScene(moodDragId,scene.id);return;}
-    if(!dragId||dragId===scene.id)return;const fi=scenes.findIndex(s=>s.id===dragId);const ti=scenes.findIndex(s=>s.id===scene.id);const m=scenes.splice(fi,1)[0];scenes.splice(ti,0,m);save();render();toast('Scene moved');
+    if(!dragId||dragId===scene.id)return;
+    moveDraggedSceneToAct(scene.act,{beforeId:scene.id});
   });
 
   // Handle

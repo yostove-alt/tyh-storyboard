@@ -1134,7 +1134,6 @@ let boardView=loadBoardView();
 let sortField='scene';let sortDir=1;
 let compose=blankCompose();
 let lbMedia=[];let lbIdx=0;let lbTitle='';
-let lbAutoTimer=null;
 let dragId=null;
 let storyDragId=null;
 let moodDragId=null;
@@ -6791,7 +6790,7 @@ async function syncMediaButton(button){
 
 // LIGHTBOX
 function openLB(media,idx,title){lbMedia=media;lbIdx=idx;lbTitle=title||'';document.getElementById('lightbox').classList.add('open');renderLB();document.addEventListener('keydown',lbKey);}
-function closeLB(){stopLBSlideshow();document.getElementById('lightbox').classList.remove('open');document.removeEventListener('keydown',lbKey);const w=document.getElementById('lbWrap');w.querySelectorAll('video').forEach(v=>v.pause());w.innerHTML='';}
+function closeLB(){document.getElementById('lightbox').classList.remove('open');document.removeEventListener('keydown',lbKey);const w=document.getElementById('lbWrap');w.querySelectorAll('video').forEach(v=>v.pause());w.innerHTML='';}
 function renderLB(){const w=document.getElementById('lbWrap');w.querySelectorAll('video').forEach(v=>v.pause());w.innerHTML='';const m=lbMedia[lbIdx];if(!m)return;if(m.type==='video'){const v=document.createElement('video');v.src=m.url;v.controls=true;v.autoplay=true;v.className='lb-media';w.appendChild(v);}else{const img=document.createElement('img');img.src=m.url;img.className='lb-media';w.appendChild(img);}document.getElementById('lbCap').textContent=m.caption||lbTitle;document.getElementById('lbCnt').textContent=lbMedia.length>1?`${lbIdx+1} / ${lbMedia.length}`:'';document.getElementById('lbPrev').style.display=lbIdx>0?'flex':'none';document.getElementById('lbNext').style.display=lbIdx<lbMedia.length-1?'flex':'none';}
 function lbNav(d){lbIdx=Math.max(0,Math.min(lbMedia.length-1,lbIdx+d));renderLB();}
 function lbKey(e){if(e.key==='Escape')closeLB();if(e.key==='ArrowLeft')lbNav(-1);if(e.key==='ArrowRight')lbNav(1);}
@@ -6805,16 +6804,7 @@ function openStoryboardImageSlideshow(){
   const media=storyboardImageMedia();
   if(!media.length){toast('No storyboard images to show');return;}
   openLB(media,0,'Storyboard images');
-  startLBSlideshow();
 }
-function startLBSlideshow(){
-  stopLBSlideshow();
-  lbAutoTimer=setInterval(()=>{
-    if(lbIdx>=lbMedia.length-1){stopLBSlideshow();return;}
-    lbNav(1);
-  },2600);
-}
-function stopLBSlideshow(){if(lbAutoTimer){clearInterval(lbAutoTimer);lbAutoTimer=null;}}
 
 // ── AUDIO ──
 let globalAudio=null;

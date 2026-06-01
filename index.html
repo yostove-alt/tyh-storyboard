@@ -1133,6 +1133,12 @@ function localMediaRecord(m){
   if(m.transient||String(m.url||'').startsWith('blob:'))return null;
   return {type:m.type||'image',name:m.name||'',url:m.url||''};
 }
+function normalizeMediaRecord(m){
+  if(!m)return null;
+  const out={...m,type:m.type||'image',name:m.name||'',url:m.url||'',storagePath:m.storagePath||'',storedId:m.storedId||'',size:m.size||0};
+  normalizeCloudMediaReference(out);
+  return out;
+}
 function withoutTransientMedia(list){
   return list.map(scene=>({...scene,media:(scene.media||[]).map(localMediaRecord).filter(Boolean)}));
 }
@@ -1407,8 +1413,8 @@ function normalizeAssetsData(data){
         status:normalizeAssetStatus(card.status),
         notes:String(card.notes||''),
         tags:normalizeAssetTags(card.tags),
-        references:Array.isArray(card.references)?card.references.filter(Boolean):[],
-        finals:Array.isArray(card.finals)?card.finals.filter(Boolean):[]
+        references:Array.isArray(card.references)?card.references.map(normalizeMediaRecord).filter(Boolean):[],
+        finals:Array.isArray(card.finals)?card.finals.map(normalizeMediaRecord).filter(Boolean):[]
       }))
     }))
   };
@@ -1433,7 +1439,7 @@ function withoutSharedHeavyAssets(data){
   const normalized=normalizeAssetsData(data);
   const cloudMedia=list=>(list||[])
     .filter(m=>m&&isCloudMedia(m))
-    .map(m=>({type:m.type||'image',name:m.name||'',url:m.url||storagePublicUrl(m.storagePath),storagePath:m.storagePath||''}));
+    .map(m=>({type:m.type||'image',name:m.name||'',url:m.url||storagePublicUrl(m.storagePath),storagePath:m.storagePath||'',size:m.size||0}));
   return {
     sections:normalized.sections.map(section=>({
       ...section,
@@ -1921,6 +1927,11 @@ async function applySharedSnapshot(snapshot,{silent=false}={}){
   for(const board of storyboards){
     const data=snapshot.boards[board.id]||{};
     LEGACY_BOARD_KEYS.forEach(key=>{
+      if(key==='jdb_assets'&&board.id===activeStoryboardId){
+        const localCount=assetMediaItems(assetsData).length;
+        const sharedCount=assetMediaCountFromStoredValue(data[key]);
+        if(localCount>sharedCount)return;
+      }
       if(data[key]!==undefined&&data[key]!==null)localStorage.setItem(boardKey(key,board.id),String(data[key]));
     });
     if(data.audioData){
@@ -2030,6 +2041,9 @@ function isLocalOnlyMedia(item){
 }
 function assetLocalOnlyCount(data=assetsData){
   return assetMediaItems(data).filter(isLocalOnlyMedia).length;
+}
+function assetMediaCountFromStoredValue(value){
+  try{return assetMediaItems(normalizeAssetsData(JSON.parse(value||'{}'))).length;}catch(e){return 0;}
 }
 function mediaCloudCounts(){
   const items=[...scenes.flatMap(scene=>scene.media||[]),...moodboard.filter(item=>item&&!item.kind),...scriptMediaItems(),...assetMediaItems()];

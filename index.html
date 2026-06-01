@@ -371,6 +371,10 @@ body.mood-closed .mood-rail{right:0;}
 .asset-thumb.active{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-l);}
 .asset-thumb img,.asset-thumb video{width:100%;height:100%;object-fit:contain;background:#050706;display:block;}
 .asset-card textarea{min-height:90px;}
+.debug-modal{position:fixed;inset:0;background:rgba(16,24,18,.35);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;}
+.debug-box{width:min(760px,100%);background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:0 24px 70px rgba(20,28,18,.24);padding:14px;display:flex;flex-direction:column;gap:10px;}
+.debug-box textarea{width:100%;min-height:420px;border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);font-family:'DM Mono',monospace;font-size:11px;line-height:1.45;color:var(--text);padding:10px;resize:vertical;}
+.debug-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;}
 
 .slideshow-wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:12px;}
 .slideshow-stage{background:#050706;border:1px solid #25312d;border-radius:var(--r);aspect-ratio:16/9;width:100%;max-height:min(68vh,660px);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;box-shadow:var(--shadow);}
@@ -2078,7 +2082,20 @@ async function debugAssetsMedia(){
       cloud=raw?assetDebugSummaryFromData(JSON.parse(raw)):{mediaCount:0,error:'No jdb_assets in cloud row for '+activeStoryboardId};
     }catch(e){cloud={mediaCount:0,error:e.message||'Cloud debug failed'};}
   }
-  alert('Asset media debug\n\nCurrent memory:\n'+JSON.stringify(current,null,2)+'\n\nLocal saved:\n'+JSON.stringify(local,null,2)+'\n\nCloud shared:\n'+JSON.stringify(cloud,null,2));
+  const text='Asset media debug\n\nCurrent memory:\n'+JSON.stringify(current,null,2)+'\n\nLocal saved:\n'+JSON.stringify(local,null,2)+'\n\nCloud shared:\n'+JSON.stringify(cloud,null,2);
+  showCopyableDebug('Asset media debug',text);
+}
+function showCopyableDebug(title,text){
+  const modal=document.createElement('div');modal.className='debug-modal';
+  const box=document.createElement('div');box.className='debug-box';
+  const head=document.createElement('div');head.className='script-label';head.textContent=title;
+  const ta=document.createElement('textarea');ta.value=text;ta.readOnly=false;
+  const actions=document.createElement('div');actions.className='debug-actions';
+  const copy=document.createElement('button');copy.className='btn btn-primary btn-sm';copy.textContent='Copy';
+  copy.onclick=async()=>{ta.focus();ta.select();try{await navigator.clipboard.writeText(ta.value);toast('Copied debug text');}catch(e){document.execCommand('copy');toast('Selected debug text');}};
+  const close=document.createElement('button');close.className='btn btn-sm';close.textContent='Close';close.onclick=()=>modal.remove();
+  actions.appendChild(copy);actions.appendChild(close);box.appendChild(head);box.appendChild(ta);box.appendChild(actions);modal.appendChild(box);document.body.appendChild(modal);
+  setTimeout(()=>{ta.focus();ta.select();},30);
 }
 function mediaCloudCounts(){
   const items=[...scenes.flatMap(scene=>scene.media||[]),...moodboard.filter(item=>item&&!item.kind),...scriptMediaItems(),...assetMediaItems()];

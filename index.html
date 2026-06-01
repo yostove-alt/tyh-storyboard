@@ -306,6 +306,11 @@ body.mood-closed .mood-rail{right:0;}
 .script-card-grid{display:grid;grid-template-columns:1fr;gap:12px;}
 .script-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;}
 .script-tools select{border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);font-family:'Instrument Sans',sans-serif;color:var(--text);font-size:13px;padding:8px 9px;outline:none;}
+.story-ai{border:1px solid var(--border);border-radius:var(--r);background:var(--surface-soft);padding:10px;margin-top:10px;display:flex;flex-direction:column;gap:8px;}
+.story-ai textarea{min-height:72px;}
+.story-ai-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.story-ai-row select{border:1px solid var(--border);border-radius:var(--rs);background:var(--surface);font-family:'Instrument Sans',sans-serif;font-size:13px;padding:8px 9px;outline:none;}
+.story-ai-note{font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);}
 .script-card-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
 .script-field-label{font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);margin-bottom:4px;}
 .script-card textarea.dialogue{min-height:150px;font-family:'DM Mono',monospace;font-size:13px;line-height:1.55;font-style:normal;}
@@ -3855,6 +3860,82 @@ function generateScriptFromStory(){
   };
   saveTimedScriptData();setBoardView('script');toast('Script beat cards generated from Story');
 }
+function storyAIInstructions(){
+  return [
+    'You are a creative story editor inside Judoboards.',
+    'Return only valid JSON.',
+    'Return this shape: {"story":"revised story brief text","acts":[{"name":"Act or section name","cards":[{"title":"editable beat title","text":"editable beat/body text"}]}]}',
+    'The user is building short-form film, animation, music video, or Bat Mitzvah video story structure.',
+    'Use the existing template structure when it is useful, but fill each editable card with specific story content.',
+    'Do not write final screenplay dialogue unless the user explicitly asks. This is the Story planning tab, not the Script tab.',
+    'Make every card concise, clear, and editable. Prefer specific hooks, setups, turns, emotional beats, and visual story ideas.'
+  ].join('\n');
+}
+function storyAIContext(extraPrompt){
+  return {
+    request:extraPrompt,
+    currentStory:scriptData.story||'',
+    currentActs:(scriptData.acts||[]).map(act=>({
+      name:act.name,
+      cards:(act.cards||[]).map(card=>({title:card.title||'',hint:card.hint||'',text:card.text||''}))
+    }))
+  };
+}
+function normalizeStoryAIPayload(payload){
+  const acts=Array.isArray(payload?.acts)?payload.acts:[];
+  return {
+    story:String(payload?.story||scriptData.story||''),
+    acts:acts.map((act,actIndex)=>({
+      id:newMediaId(),
+      name:String(act.name||('Act '+(actIndex+1))),
+      cards:(Array.isArray(act.cards)?act.cards:[]).map(card=>({
+        id:newMediaId(),
+        title:String(card.title||'Story beat'),
+        hint:String(card.hint||''),
+        text:String(card.text||card.body||card.summary||''),
+        media:[]
+      })).filter(card=>card.title||card.text)
+    })).filter(act=>act.cards.length)
+  };
+}
+async function runStoryAI(promptText,provider,button){
+  if(viewOnlyMode)return;
+  const isClaude=provider==='claude';
+  const key=isClaude?getClaudeKey():getOpenAIKey();
+  if(!key){toast('Add '+(isClaude?'Claude':'OpenAI')+' API key in Agent tab first');openPanel('agent');return;}
+  const original=button.textContent;
+  button.disabled=true;button.textContent='Thinking...';
+  try{
+    const input='Return valid json only. Fill/revise the Story planning cards from this context:\n'+JSON.stringify(storyAIContext(promptText));
+    let text='';
+    if(isClaude){
+      const response=await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},
+        body:JSON.stringify({model:getClaudeModel(),system:storyAIInstructions(),max_tokens:4000,messages:[{role:'user',content:input}]})
+      });
+      if(!response.ok){let detail='';try{const err=await response.json();detail=err.error?.message||'';}catch(e){}toast('Claude returned '+response.status+(detail?': '+detail:''),7000);return;}
+      text=extractClaudeText(await response.json());
+    }else{
+      const response=await fetch('https://api.openai.com/v1/responses',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+        body:JSON.stringify({model:getOpenAIModel(),instructions:storyAIInstructions(),input,max_output_tokens:4000,text:{format:{type:'json_object'}}})
+      });
+      if(!response.ok){let detail='';try{const err=await response.json();detail=err.error?.message||'';}catch(e){}toast('OpenAI returned '+response.status+(detail?': '+detail:''),7000);return;}
+      text=extractResponseText(await response.json());
+    }
+    const payload=normalizeStoryAIPayload(parseAgentPayload(text));
+    if(!payload.acts.length){toast('AI did not return story cards');return;}
+    scriptData.story=payload.story;
+    scriptData.acts=payload.acts;
+    saveScriptData();render();toast('Story filled by '+(isClaude?'Claude':'ChatGPT'));
+  }catch(e){
+    toast('Could not reach '+(isClaude?'Claude':'OpenAI')+' from this page',7000);
+  }finally{
+    button.disabled=false;button.textContent=original;
+  }
+}
 function renderStoryView(board){
   scriptData=normalizeScriptData(scriptData);
   const wrap=document.createElement('div');wrap.className='script-wrap';
@@ -3864,6 +3945,17 @@ function renderStoryView(board){
   storyText.oninput=()=>{scriptData.story=storyText.value;saveScriptData();};
   story.appendChild(label);story.appendChild(storyText);wrap.appendChild(story);
   if(!viewOnlyMode){
+    const aiBox=document.createElement('div');aiBox.className='story-ai';
+    const aiPrompt=document.createElement('textarea');aiPrompt.placeholder='Ask AI to fill or revise the story beats. Example: Make this a funny 5-minute Bat Mitzvah animation about gratitude, with a strong hook and emotional ending.';
+    const aiRow=document.createElement('div');aiRow.className='story-ai-row';
+    const providerSel=document.createElement('select');
+    [['openai','ChatGPT'],['claude','Claude']].forEach(([value,label])=>{const option=document.createElement('option');option.value=value;option.textContent=label;providerSel.appendChild(option);});
+    providerSel.value=activeAgentProvider;
+    providerSel.onchange=()=>setAgentProvider(providerSel.value);
+    const aiBtn=document.createElement('button');aiBtn.className='btn btn-primary';aiBtn.textContent='AI fill story beats';aiBtn.onclick=()=>runStoryAI(aiPrompt.value,providerSel.value,aiBtn);
+    const aiNote=document.createElement('div');aiNote.className='story-ai-note';aiNote.textContent='Uses Agent tab API key. All results stay editable.';
+    aiRow.appendChild(providerSel);aiRow.appendChild(aiBtn);aiRow.appendChild(aiNote);
+    aiBox.appendChild(aiPrompt);aiBox.appendChild(aiRow);story.appendChild(aiBox);
     const tools=document.createElement('div');tools.className='script-tools';
     const templateSelect=document.createElement('select');
     const empty=document.createElement('option');empty.value='';empty.textContent='Choose script template';templateSelect.appendChild(empty);

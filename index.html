@@ -3296,7 +3296,9 @@ function bulkCreateScenes(cards,{act=null,replace=false}={}){
   let nextId=Math.max(...scenes.map(s=>s.id),0)+1;
   const newScenes=cards.map(card=>{
     const fields=card.fields||{};
-    const scene={id:nextId++,act:card.act||actName,num:String(nextId),title:card.title||'Untitled scene',time:card.time||card.timecode||'',location:card.location||fields.location||locations[0]||'Other',status:card.status||fields.status||statuses[0]||'Not shot',lyrics:card.lyrics||fields.lyrics||'',shots:Array.isArray(card.shots)?card.shots:Array.isArray(fields.shots)?fields.shots:[],note:card.note||fields.note||'',camera:Array.isArray(card.camera)?card.camera:Array.isArray(fields.camera)?fields.camera:[],media:[]};
+    const cardAct=card.act||actName;
+    addOption('act',cardAct);
+    const scene={id:nextId++,act:cardAct,num:String(nextId),title:card.title||'Untitled scene',time:card.time||card.timecode||'',location:card.location||fields.location||locations[0]||'Other',status:card.status||fields.status||statuses[0]||'Not shot',lyrics:card.lyrics||fields.lyrics||'',shots:Array.isArray(card.shots)?card.shots:Array.isArray(fields.shots)?fields.shots:[],note:card.note||fields.note||'',camera:Array.isArray(card.camera)?card.camera:Array.isArray(fields.camera)?fields.camera:[],media:[]};
     fieldSettings.forEach(field=>{if(field.kind!=='shots'&&scene[field.key]===undefined)scene[field.key]=fields[field.key]||fields[field.label]||'';});
     return scene;
   });
@@ -3710,6 +3712,8 @@ function boardAgentInstructions(){
     '{"type":"move_scenes","scope":"selected|visible|Act name|scene number/title","act":"Act name optional","after":"scene number/title optional","before":"scene number/title optional"}',
     '{"type":"set_story_page","story":"core story paragraph optional","acts":[{"name":"Act or section name","cards":[{"title":"beat/sequence title","text":"editable story beat text","hint":"optional placeholder/help text"}]}],"mode":"replace|append"}',
     '{"type":"set_script_page","acts":[{"name":"Act or section name","cards":[{"title":"script beat title","timing":"00:00-00:15","duration":"15 sec","dialogue":"dialogue or voiceover","visual":"visual notes"}]}],"mode":"replace|append"}',
+    '{"type":"make_cards_from_script","replace":true}',
+    '{"type":"build_project","story":"core story paragraph","storyActs":[{"name":"Act name","cards":[{"title":"story beat","text":"story idea"}]}],"scriptActs":[{"name":"Act name","cards":[{"title":"script beat","timing":"00:00-00:15","duration":"15 sec","dialogue":"dialogue/voiceover","visual":"visual notes"}]}],"cards":[{"act":"Act name","title":"scene card title","time":"00:00-00:15","lyrics":"dialogue/voiceover","shots":["shot idea"],"fields":{"note":"director note"}}],"replace":true}',
     '{"type":"update_story_card","id":"story card id","title":"optional","text":"optional","mode":"set|append"}',
     '{"type":"update_script_card","id":"script beat id","fields":{"title":"optional","timing":"optional","duration":"optional","dialogue":"optional","visual":"optional"},"mode":"set|append"}',
     '{"type":"rename_option","optionType":"act|location|status|camera","from":"old","to":"new"}',
@@ -3723,6 +3727,9 @@ function boardAgentInstructions(){
     'Use selected Story cards, Script beats, Assets, and scene cards as the user’s intended context. If selected assets include media URLs, treat them as visual references and describe their important details in the prompt or text you apply. The app will attach selected asset images as references for Nano Banana Pro image generation.',
     'For Story page changes, use set_story_page or update_story_card. For Script page changes, use set_script_page or update_script_card. The Story page is for structure/ideas; the Script page is for timing, dialogue, and visual notes.',
     'If the user asks to make a full script, restructure the script, make as many acts/beats as needed, or use the whole script, use set_script_page with mode "replace" unless they ask to append. You may create any number of acts and beats needed for the story.',
+    'If the user asks to make the Script page from the Story page, use set_script_page and write real timed script beats from the story context.',
+    'If the user asks to make Cards from the Script page, use make_cards_from_script. If they want more creative card detail than the script contains, use bulk_create_scenes with scene card details generated from the script.',
+    'If the user asks to make the whole project, whole thing, everything, or build from an idea, use build_project with story, storyActs, scriptActs, and cards. Replace existing structure unless the user asks to append.',
     'For shot ideas, prefer add_shots or set_field with field "Key shots" and mode "append". Keep each shot short, visual, and filmable.',
     'For deleting/clearing, use clear_field, remove_text, delete_scene, or delete_scenes. Do not ask for confirmation in JSON; the app treats your action as the requested change.',
     'Prefer exact existing act/location/status/camera names from the board context.',
@@ -3789,6 +3796,39 @@ function applyScriptPageAction(action){
   timedScriptData.acts=mode==='append'?[...(timedScriptData.acts||[]),...acts]:acts;
   saveTimedScriptData();render();
   return (mode==='append'?'Added to':'Updated')+' Script page.';
+}
+function makeCardsFromScriptAction(action={}){
+  const items=scriptCardsFlat().filter(({card})=>card.title||card.timing||card.dialogue||card.visual||card.purpose);
+  if(!items.length)return 'No Script beats were available to turn into Cards.';
+  const replace=action.replace!==false;
+  let nextId=replace?1:Math.max(...scenes.map(scene=>scene.id),0)+1;
+  const generated=items.map(({act,card})=>scriptCardToScene(act,card,nextId++));
+  scenes=replace?generated:[...scenes,...generated];
+  syncOptionsFromScenes();save();setBoardView('cards');
+  return (replace?'Replaced Cards with ':'Added ')+plural(generated.length,'card')+' from the Script page.';
+}
+function applyBuildProjectAction(action){
+  const replace=action.replace!==false;
+  const storyActs=normalizeAgentStoryActs(action.storyActs||action.story_acts||action.acts||[]);
+  const scriptActs=normalizeAgentTimedScriptActs(action.scriptActs||action.script_acts||action.script||[]);
+  const sceneCards=Array.isArray(action.cards)?action.cards:Array.isArray(action.scenes)?action.scenes:[];
+  const results=[];
+  if(action.story!==undefined||storyActs.length){
+    if(action.story!==undefined)scriptData.story=String(action.story||'');
+    if(storyActs.length)scriptData.acts=replace?storyActs:[...(scriptData.acts||[]),...storyActs];
+    saveScriptData();results.push('Story page');
+  }
+  if(scriptActs.length){
+    timedScriptData.acts=replace?scriptActs:[...(timedScriptData.acts||[]),...scriptActs];
+    saveTimedScriptData();results.push('Script page');
+  }
+  if(sceneCards.length){
+    if(replace)scenes=[];
+    results.push(bulkCreateScenes(sceneCards,{act:action.act||acts[0]||'Act 1',replace:false}));
+  }
+  if(!results.length)return 'No project structure was provided.';
+  syncOptionsFromScenes();save();render();
+  return 'Built '+results.join(', ')+'.';
 }
 function updateStoryCardAction(action){
   const id=String(action.id||action.cardId||'');
@@ -3994,6 +4034,10 @@ async function applyAgentActions(actions){
         results.push(applyStoryPageAction(action));
       }else if(type==='set_script_page'||type==='replace_script_page'){
         results.push(applyScriptPageAction(action));
+      }else if(type==='make_cards_from_script'||type==='generate_cards_from_script'||type==='cards_from_script'){
+        results.push(makeCardsFromScriptAction(action));
+      }else if(type==='build_project'||type==='build_whole_project'||type==='make_whole_thing'){
+        results.push(applyBuildProjectAction(action));
       }else if(type==='update_story_card'){
         results.push(updateStoryCardAction(action));
       }else if(type==='update_script_card'){

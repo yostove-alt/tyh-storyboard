@@ -3042,9 +3042,12 @@ async function sendChat(value,provider='openai'){
     messages.push({role:'assistant',text:'Thinking...'});
     renderPanel();
     const idx=messages.length-1;
-    const reply=wantsScriptToCardsRequest(text)
+    const workflow=focusedWorkflowForText(text);
+    const reply=workflow==='script_to_cards'
       ? await runScriptToCardsAgent(text,key,isClaude)
-      : isClaude?await runClaudeAgent(text,key):await runOpenAIAgent(text,key);
+      : workflow
+        ? await runFocusedWorkflowAgent(text,key,isClaude,workflow)
+        : isClaude?await runClaudeAgent(text,key):await runOpenAIAgent(text,key);
     messages[idx]={role:'assistant',text:await applyActionsFromAssistantText(reply,text)};
   }else{
     const reply=runBoardChat(text);
@@ -3056,6 +3059,7 @@ function fallbackAgentActionsForText(text){
   const n=normChat(text);
   const wantsCards=(/\b(make|create|generate|build|turn|convert)\b/.test(n)&&/\b(cards?|cards view|scene cards?|storyboard cards?)\b/.test(n)&&/\b(script|script page|full script)\b/.test(n));
   if(wantsCards&&/\b(copy|exactly|directly|one card per beat|same beats)\b/.test(n))return [{type:'make_cards_from_script',replace:!/\b(append|add to existing|keep existing)\b/.test(n)}];
+  if(/\b(add|create|generate|make)\b/.test(n)&&/\b(images?|pictures?|frames?)\b/.test(n)&&/\b(all cards?|cards view|storyboard cards?)\b/.test(n))return [{type:'generate_card_images',scope:'all',prompt:text}];
   return [];
 }
 async function applyActionsFromAssistantText(reply,userText=''){
@@ -3640,6 +3644,47 @@ async function chatGenerateImages(action){
   save();render();
   return 'Generated '+plural(generated.length,'image')+' and attached '+(generated.length===1?'it':'them')+' to '+plural(targets.length,'card')+(refs.length?' using '+plural(refs.length,'reference image'):'')+'.';
 }
+function promptForSceneImage(scene,overall=''){
+  const custom=fieldSettings.map(field=>{
+    const value=field.kind==='shots'?(scene.shots||[]).join('; '):(scene[field.key]||'');
+    return value?(field.label+': '+value):'';
+  }).filter(Boolean).join('\n');
+  return [
+    'Create one storyboard frame image for this card.',
+    overall?('Overall visual direction: '+overall):'',
+    'Act: '+(scene.act||''),
+    'Scene: '+(scene.num||'')+' '+(scene.title||''),
+    scene.time?('Timing: '+scene.time):'',
+    scene.location?('Location: '+scene.location):'',
+    scene.lyrics?('Dialogue/voiceover/lyrics: '+scene.lyrics):'',
+    (scene.shots||[]).length?('Key shots: '+scene.shots.join('; ')):'',
+    scene.note?("Director's note: "+scene.note):'',
+    custom,
+    'Make it a clear production storyboard frame. No captions unless explicitly requested.'
+  ].filter(Boolean).join('\n');
+}
+async function chatGenerateCardImages(action){
+  const targets=scenesForScope(action.scope||action.target||'all');
+  if(!targets.length)return 'I could not find cards for that image scope.';
+  const size=normalizeImageSize(action.size||'1536x1024');
+  const overall=cleanChatValue(action.prompt||action.value||action.description||'');
+  const refs=[];
+  [...mentionedReferenceMedia(overall),...selectedAssetReferenceMedia(),...agentPromptReferenceMedia()].forEach(ref=>{
+    const key=ref.storagePath||ref.url||ref.name;
+    if(key&&!refs.some(existing=>(existing.storagePath||existing.url||existing.name)===key))refs.push(ref);
+  });
+  refs.splice(8);
+  let made=0;
+  for(const scene of targets){
+    const prompt=promptForSceneImage(scene,overall);
+    const media=await mediaItemFromGeneratedImage(prompt,{name:cleanGeneratedImageName((scene.title||'storyboard-card')+' image',1),size,refs});
+    scene.media=[...(scene.media||[]),media];
+    made++;
+    save();
+  }
+  render();
+  return 'Generated '+plural(made,'tailored image')+' for '+plural(targets.length,'card')+'.';
+}
 function chatDeleteScenes(scopeRaw){
   const targets=scenesForScope(scopeRaw||'selected');
   if(!targets.length)return 'I could not find cards to delete.';
@@ -3771,6 +3816,7 @@ function boardAgentInstructions(){
     '{"type":"add_scene","act":"Act name","title":"Title","fields":{"location":"...","status":"...","shots":["..."],"props":"..."}}',
     '{"type":"bulk_create_scenes","act":"Act name","cards":[{"title":"Verse title","time":"0:00 – 0:08","lyrics":"lyrics text","fields":{"note":"optional","shots":["optional shot"]}}],"replace":false}',
     '{"type":"generate_image","scope":"selected|visible|all|Act name|scene number/title","prompt":"detailed visual prompt","count":1,"size":"1536x1024|1024x1024|1024x1536|16:9|9:16","name":"optional file name"}',
+    '{"type":"generate_card_images","scope":"selected|visible|all|Act name|scene number/title","prompt":"overall visual style/direction","size":"1536x1024|1024x1024|1024x1536|16:9|9:16"}',
     '{"type":"delete_scenes","scope":"selected|visible|Act name|scene number/title"}',
     '{"type":"move_scenes","scope":"selected|visible|Act name|scene number/title","act":"Act name optional","after":"scene number/title optional","before":"scene number/title optional"}',
     '{"type":"set_story_page","story":"core story paragraph optional","acts":[{"name":"Act or section name","cards":[{"title":"beat/sequence title","text":"editable story beat text","hint":"optional placeholder/help text"}]}],"mode":"replace|append"}',
@@ -3785,6 +3831,7 @@ function boardAgentInstructions(){
     'When the user pastes song sections with verse labels and timestamps, create one card per verse/timed block, filling title, time, and lyrics.',
     'When the user asks for creative ideas and says to add/apply/fill them in, generate concrete production-ready text and apply it with set_field, set_fields, or add_shots.',
     'When the user asks you to make, generate, create, attach, or add an image, concept image, reference image, storyboard frame, character image, prop image, or location image, use generate_image. Use scope "selected" for selected cards unless the user names a different target.',
+    'When the user asks to add images to many cards or all cards, use generate_card_images so each card gets its own tailored image from its title, lyrics, shots, notes, act, timing, and fields.',
     'The app will generate images with the selected image generator in the Agent panel: GPT Image 2 or Nano Banana Pro.',
     'Write image prompts as complete production art direction: subject, setting, mood, composition, camera angle, lighting, style, and any visible text if needed.',
     'Use selected Story cards, Script beats, Assets, and scene cards as the user’s intended context. If selected assets include media URLs, treat them as visual references and describe their important details in the prompt or text you apply. The app will attach selected asset images as references for Nano Banana Pro image generation.',
@@ -3817,6 +3864,72 @@ function wantsScriptToCardsRequest(text){
     && /\b(cards?|cards view|scene cards?|storyboard cards?|storyboard)\b/.test(n)
     && /\b(script|script page|full script)\b/.test(n)
     && !/\b(copy|exactly|directly|one card per beat|same beats)\b/.test(n);
+}
+function focusedWorkflowForText(text){
+  const n=normChat(text);
+  if(wantsScriptToCardsRequest(text))return 'script_to_cards';
+  if(/\b(add|create|generate|make)\b/.test(n)&&/\b(images?|pictures?|frames?)\b/.test(n)&&/\b(all cards?|cards view|storyboard cards?)\b/.test(n))return 'images_for_cards';
+  if(/\b(create|generate|make|populate|build)\b/.test(n)&&/\b(story beats?|story view|story page)\b/.test(n)&&/\b(idea|concept|premise|based on this)\b/.test(n))return 'idea_to_story';
+  if(/\b(generate|make|create|write|build|revise)\b/.test(n)&&/\b(script|script page|full script)\b/.test(n)&&/\b(story|story page|story view|story beats?)\b/.test(n))return n.includes('based on current script')||n.includes('based on script')&&n.includes('story')?'script_to_story':'story_to_script';
+  if(/\b(revise|generate|make|create|write|rework)\b/.test(n)&&/\b(script|script page|full script)\b/.test(n)&&/\b(cards?|cards view|storyboard cards?)\b/.test(n))return 'cards_to_script';
+  if(/\b(revise|generate|make|create|update|rework)\b/.test(n)&&/\b(story|story page|story view|story beats?)\b/.test(n)&&/\b(script|script page|full script)\b/.test(n))return 'script_to_story';
+  return '';
+}
+function workflowInstructions(kind){
+  const common='Return only valid JSON with this shape: {"message":"short human response","actions":[...]}';
+  if(kind==='images_for_cards')return common+'\nReturn {"message":"Generating one tailored image for each target card.","actions":[{"type":"generate_card_images","scope":"all","prompt":"user visual direction"}]}.';
+  if(kind==='idea_to_story')return [
+    common,
+    'You are a story development editor. Convert the user idea into the Story page.',
+    'Use set_story_page with mode "replace". Create the right number of acts/sections and story beat cards. Fill the core story paragraph and each beat with clear editable description.',
+    'Do not write full screenplay dialogue here; this is structure, theme, arc, sequence, and beat description.'
+  ].join('\n');
+  if(kind==='story_to_script')return [
+    common,
+    'You are a screenwriter. Generate/revise the Script page based on the Story page and selected context.',
+    'Use set_script_page with mode "replace". Create as many acts and beats as needed. Add timing, duration, dialogue/voiceover, and visual notes.',
+    'Intelligently rework the story into script material; do not merely copy story text.'
+  ].join('\n');
+  if(kind==='cards_to_script')return [
+    common,
+    'You are a script editor. Revise or generate the Script page based on the current Cards view.',
+    'Use set_script_page with mode "replace". Group cards into coherent script acts/beats, preserving important timing, dialogue, visual notes, and story progression.',
+    'Make the script consistent with the cards rather than copying each card one-for-one.'
+  ].join('\n');
+  if(kind==='script_to_story')return [
+    common,
+    'You are a story editor. Revise the Story page based on the current Script page.',
+    'Use set_story_page with mode "replace". Create coherent story acts/sections and beat descriptions that summarize the script structure, theme, arc, and major turns.',
+    'Keep it editable and useful as a high-level story plan.'
+  ].join('\n');
+  return boardAgentInstructions();
+}
+function workflowContext(kind,userText){
+  return workspaceAIContext({workflow:kind,user:userText,fullScript:fullScriptText()});
+}
+async function runFocusedWorkflowAgent(text,key,isClaude,kind){
+  if(kind==='images_for_cards')return JSON.stringify({message:'Generating one tailored image for each card.',actions:[{type:'generate_card_images',scope:'all',prompt:text}]});
+  try{
+    const input='Return valid json only for this workflow:\n'+JSON.stringify(workflowContext(kind,text));
+    if(isClaude){
+      const response=await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},
+        body:JSON.stringify({model:getClaudeModel(),system:workflowInstructions(kind),max_tokens:9000,messages:[{role:'user',content:input}]})
+      });
+      if(!response.ok){let detail='';try{const err=await response.json();detail=err.error?.message||'';}catch(e){}return 'Claude returned '+response.status+(detail?': '+detail:'')+'.';}
+      return extractClaudeText(await response.json());
+    }
+    const response=await fetch('https://api.openai.com/v1/responses',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+      body:JSON.stringify({model:getOpenAIModel(),instructions:workflowInstructions(kind),input,max_output_tokens:9000,text:{format:{type:'json_object'}}})
+    });
+    if(!response.ok){let detail='';try{const err=await response.json();detail=err.error?.message||'';}catch(e){}return 'OpenAI returned '+response.status+(detail?': '+detail:'')+'.';}
+    return extractResponseText(await response.json());
+  }catch(e){
+    return 'I could not reach the AI for that workflow.';
+  }
 }
 function scriptToCardsInstructions(){
   return [
@@ -4149,6 +4262,8 @@ async function applyAgentActions(actions){
         results.push(bulkCreateScenes(action.cards||action.scenes||[],{act:action.act||activeFilters.act||acts[0],replace:!!action.replace}));
       }else if(type==='generate_image'||type==='generate_images'||type==='create_image'||type==='create_images'||type==='add_image'){
         results.push(await chatGenerateImages(action));
+      }else if(type==='generate_card_images'||type==='generate_images_for_cards'||type==='add_images_to_cards'){
+        results.push(await chatGenerateCardImages(action));
       }else if(type==='delete_scenes'){
         results.push(chatDeleteScenes(action.scope||action.target||'selected'));
       }else if(type==='move_scenes'){

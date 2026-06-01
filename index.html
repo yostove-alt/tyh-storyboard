@@ -3042,7 +3042,9 @@ async function sendChat(value,provider='openai'){
     messages.push({role:'assistant',text:'Thinking...'});
     renderPanel();
     const idx=messages.length-1;
-    const reply=isClaude?await runClaudeAgent(text,key):await runOpenAIAgent(text,key);
+    const reply=wantsScriptToCardsRequest(text)
+      ? await runScriptToCardsAgent(text,key,isClaude)
+      : isClaude?await runClaudeAgent(text,key):await runOpenAIAgent(text,key);
     messages[idx]={role:'assistant',text:await applyActionsFromAssistantText(reply,text)};
   }else{
     const reply=runBoardChat(text);
@@ -3053,7 +3055,7 @@ async function sendChat(value,provider='openai'){
 function fallbackAgentActionsForText(text){
   const n=normChat(text);
   const wantsCards=(/\b(make|create|generate|build|turn|convert)\b/.test(n)&&/\b(cards?|cards view|scene cards?|storyboard cards?)\b/.test(n)&&/\b(script|script page|full script)\b/.test(n));
-  if(wantsCards)return [{type:'make_cards_from_script',replace:!/\b(append|add to existing|keep existing)\b/.test(n)}];
+  if(wantsCards&&/\b(copy|exactly|directly|one card per beat|same beats)\b/.test(n))return [{type:'make_cards_from_script',replace:!/\b(append|add to existing|keep existing)\b/.test(n)}];
   return [];
 }
 async function applyActionsFromAssistantText(reply,userText=''){
@@ -3807,6 +3809,63 @@ function storyCardForAI(act,card){
 }
 function scriptCardForAI(act,card){
   return {id:card.id,act:act.name||'',title:card.title||'',timing:card.timing||'',duration:card.duration||'',dialogue:card.dialogue||card.text||'',visual:card.visual||'',hint:card.hint||''};
+}
+function wantsScriptToCardsRequest(text){
+  const n=normChat(text);
+  return /\b(make|create|generate|build|turn|convert)\b/.test(n)
+    && /\b(cards?|cards view|scene cards?|storyboard cards?|storyboard)\b/.test(n)
+    && /\b(script|script page|full script)\b/.test(n)
+    && !/\b(copy|exactly|directly|one card per beat|same beats)\b/.test(n);
+}
+function scriptToCardsInstructions(){
+  return [
+    'You are a storyboard director inside Judoboards.',
+    'Return only valid JSON with this shape: {"message":"short human response","actions":[{"type":"bulk_create_scenes","replace":true,"cards":[...]}]}',
+    'Create storyboard Cards from the Script page intelligently, not one-for-one.',
+    'Choose the right number of cards for the script: split dense or visually changing beats into multiple cards, combine tiny continuation moments, and avoid both over-fragmenting and under-covering.',
+    'Use the script timing to assign time ranges. If one script beat needs multiple cards, divide its timing naturally. If timing is missing, make reasonable sequential ranges.',
+    'Each card should include act, title, time, lyrics/dialogue/voiceover, key shots, director note, and useful fields like location, props, wardrobe, or extras when clear.',
+    'Do not generate images. Leave media empty. Make the cards production-ready and visual.',
+    'If replacing, set replace true unless the user asks to append.'
+  ].join('\n');
+}
+function scriptToCardsContext(userText){
+  return {
+    user:userText,
+    story:scriptData.story||'',
+    fullScript:fullScriptText(),
+    scriptActs:(timedScriptData.acts||[]).map(act=>({
+      name:act.name||'Script',
+      cards:(act.cards||[]).map(card=>scriptCardForAI(act,card))
+    })),
+    existingActs:acts,
+    existingLocations:locations,
+    existingStatuses:statuses,
+    fields:fieldSettings.map(field=>({key:field.key,label:field.label,kind:field.kind,visible:field.visible!==false}))
+  };
+}
+async function runScriptToCardsAgent(text,key,isClaude=false){
+  try{
+    const input='Return valid json only. Create an intelligent storyboard Cards view from this Script context:\n'+JSON.stringify(scriptToCardsContext(text));
+    if(isClaude){
+      const response=await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},
+        body:JSON.stringify({model:getClaudeModel(),system:scriptToCardsInstructions(),max_tokens:8000,messages:[{role:'user',content:input}]})
+      });
+      if(!response.ok){let detail='';try{const err=await response.json();detail=err.error?.message||'';}catch(e){}return 'Claude returned '+response.status+(detail?': '+detail:'')+'.';}
+      return extractClaudeText(await response.json());
+    }
+    const response=await fetch('https://api.openai.com/v1/responses',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+      body:JSON.stringify({model:getOpenAIModel(),instructions:scriptToCardsInstructions(),input,max_output_tokens:9000,text:{format:{type:'json_object'}}})
+    });
+    if(!response.ok){let detail='';try{const err=await response.json();detail=err.error?.message||'';}catch(e){}return 'OpenAI returned '+response.status+(detail?': '+detail:'')+'.';}
+    return extractResponseText(await response.json());
+  }catch(e){
+    return 'I could not reach the AI to design Cards from the Script.';
+  }
 }
 function normalizeAgentStoryActs(actsRaw){
   const actsList=Array.isArray(actsRaw)?actsRaw:[];

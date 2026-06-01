@@ -3827,6 +3827,34 @@ function generateCardsFromScript(){
   scenes=replace?generated:[...scenes,...generated];
   syncOptionsFromScenes();save();setBoardView('cards');toast('Generated '+generated.length+' card'+(generated.length!==1?'s':'')+' from Script');
 }
+function generateScriptFromStory(){
+  if(viewOnlyMode)return;
+  const actsToUse=(scriptData.acts||[]).filter(act=>(act.cards||[]).some(card=>card.title||card.text||card.hint));
+  if(!actsToUse.length){toast('No story cards to generate from');return;}
+  if(!confirm('Generate Script beat cards from Story? This will replace the current Script beats, but will not write dialogue.'))return;
+  timedScriptData={
+    story:'',
+    summary:'',
+    storyPrompt:'',
+    acts:actsToUse.map(act=>({
+      id:newMediaId(),
+      name:act.name||'Script',
+      cards:(act.cards||[]).filter(card=>card.title||card.text||card.hint).map(card=>({
+        id:newMediaId(),
+        title:card.title||'Script beat',
+        purpose:'',
+        timing:'',
+        duration:'',
+        dialogue:'',
+        visual:card.text||'',
+        hint:card.hint||card.text||'',
+        text:'',
+        media:[]
+      }))
+    }))
+  };
+  saveTimedScriptData();setBoardView('script');toast('Script beat cards generated from Story');
+}
 function renderStoryView(board){
   scriptData=normalizeScriptData(scriptData);
   const wrap=document.createElement('div');wrap.className='script-wrap';
@@ -3834,11 +3862,7 @@ function renderStoryView(board){
   const label=document.createElement('div');label.className='script-label';label.textContent='Story';
   const storyText=document.createElement('textarea');storyText.placeholder=scriptData.storyPrompt||'Core idea of the film...';storyText.value=scriptData.story||'';storyText.disabled=viewOnlyMode;
   storyText.oninput=()=>{scriptData.story=storyText.value;saveScriptData();};
-  const summaryLabel=document.createElement('div');summaryLabel.className='script-label';summaryLabel.textContent='Script summary';summaryLabel.style.marginTop='12px';
-  const summaryText=document.createElement('textarea');summaryText.placeholder='Short summary of the full script...';summaryText.value=scriptData.summary||'';summaryText.disabled=viewOnlyMode;
-  summaryText.style.minHeight='76px';
-  summaryText.oninput=()=>{scriptData.summary=summaryText.value;saveScriptData();};
-  story.appendChild(label);story.appendChild(storyText);story.appendChild(summaryLabel);story.appendChild(summaryText);wrap.appendChild(story);
+  story.appendChild(label);story.appendChild(storyText);wrap.appendChild(story);
   if(!viewOnlyMode){
     const tools=document.createElement('div');tools.className='script-tools';
     const templateSelect=document.createElement('select');
@@ -3848,7 +3872,9 @@ function renderStoryView(board){
     apply.onclick=()=>applyScriptTemplate(templateSelect.value);
     const saveTemplate=document.createElement('button');saveTemplate.className='btn btn-sm';saveTemplate.textContent='Save current as template';
     saveTemplate.onclick=saveCurrentScriptAsTemplate;
-    tools.appendChild(templateSelect);tools.appendChild(apply);tools.appendChild(saveTemplate);story.appendChild(tools);
+    const generateScript=document.createElement('button');generateScript.className='btn btn-primary';generateScript.textContent='Generate script from story';
+    generateScript.onclick=generateScriptFromStory;
+    tools.appendChild(templateSelect);tools.appendChild(apply);tools.appendChild(saveTemplate);tools.appendChild(generateScript);story.appendChild(tools);
   }
   scriptData.acts.forEach((act,actIndex)=>{
     const actEl=document.createElement('section');actEl.className='script-act';
@@ -3917,16 +3943,13 @@ function renderScriptView(board){
       duration.oninput=()=>{card.duration=duration.value;saveTimedScriptData();};
       durationWrap.appendChild(durationLabel);durationWrap.appendChild(duration);
       meta.appendChild(timingWrap);meta.appendChild(durationWrap);
-      const purposeLabel=document.createElement('div');purposeLabel.className='script-field-label';purposeLabel.textContent='Story purpose';
-      const purpose=document.createElement('textarea');purpose.placeholder='Introduce gratitude as the theme.';purpose.value=card.purpose||'';purpose.disabled=viewOnlyMode;
-      purpose.oninput=()=>{card.purpose=purpose.value;saveTimedScriptData();};
       const dialogueLabel=document.createElement('div');dialogueLabel.className='script-field-label';dialogueLabel.textContent='Dialogue';
       const dialogue=document.createElement('textarea');dialogue.className='dialogue';dialogue.placeholder='MARIAM\nHi everyone. Welcome to my Bat Mitzvah.\n\nMARIAM (V.O.)\nThe first words a Jew says every morning are Modeh Ani...';dialogue.value=card.dialogue||'';dialogue.disabled=viewOnlyMode;
       dialogue.oninput=()=>{card.dialogue=dialogue.value;card.text=dialogue.value;saveTimedScriptData();};
       const visualLabel=document.createElement('div');visualLabel.className='script-field-label';visualLabel.textContent='Visual notes';
       const visual=document.createElement('textarea');visual.className='visual';visual.placeholder='Mariam opens the door.\nBackflip transition.\nMove into animation.';visual.value=card.visual||'';visual.disabled=viewOnlyMode;
       visual.oninput=()=>{card.visual=visual.value;saveTimedScriptData();};
-      cardEl.appendChild(title);cardEl.appendChild(meta);cardEl.appendChild(purposeLabel);cardEl.appendChild(purpose);cardEl.appendChild(dialogueLabel);cardEl.appendChild(dialogue);cardEl.appendChild(visualLabel);cardEl.appendChild(visual);
+      cardEl.appendChild(title);cardEl.appendChild(meta);cardEl.appendChild(dialogueLabel);cardEl.appendChild(dialogue);cardEl.appendChild(visualLabel);cardEl.appendChild(visual);
       if(!viewOnlyMode){
         const actions=document.createElement('div');actions.className='script-card-actions';
         const del=document.createElement('button');del.className='card-del-btn';del.textContent='Delete';del.onclick=()=>deleteScriptCard(act,card,saveTimedScriptData);

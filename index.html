@@ -3352,7 +3352,7 @@ async function geminiReferenceParts(refs){
       const response=await fetch(ref.url);
       if(!response.ok)continue;
       const blob=await response.blob();
-      parts.push({inlineData:{mimeType:blob.type||'image/png',data:await blobToBase64(blob)}});
+      parts.push({inline_data:{mime_type:blob.type||'image/png',data:await blobToBase64(blob)}});
     }catch(e){}
   }
   return parts;

@@ -118,10 +118,17 @@ body.panel-closed .panel-rail{left:0;}
 .chat-msg.assistant{align-self:flex-start;color:var(--text);}
 .chat-msg .chat-meta{font-family:'DM Mono',monospace;font-size:9px;color:var(--faint);letter-spacing:.08em;text-transform:uppercase;margin-bottom:3px;}
 .chat-msg.user .chat-meta{color:rgba(255,255,255,.65);}
-.chat-box{display:flex;gap:7px;align-items:flex-end;}
+.chat-box{display:flex;gap:7px;align-items:flex-end;position:relative;}
 .chat-input{flex:1;min-height:70px;max-height:150px;resize:vertical;font-family:'Instrument Sans',sans-serif;font-size:13px;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:var(--rs);padding:9px 10px;outline:none;line-height:1.45;}
 .chat-input:focus{border-color:var(--accent);background:var(--accent-l);}
 .chat-send{height:38px;align-self:flex-end;}
+.mention-picker{position:absolute;left:0;right:74px;bottom:calc(100% + 6px);max-height:260px;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:0 16px 44px rgba(25,35,22,.18);z-index:50;padding:6px;display:flex;flex-direction:column;gap:5px;}
+.mention-option{display:grid;grid-template-columns:42px minmax(0,1fr);gap:8px;align-items:center;border:1px solid transparent;border-radius:var(--rs);background:transparent;text-align:left;padding:5px;color:var(--text);cursor:pointer;font-family:'Instrument Sans',sans-serif;}
+.mention-option:hover{border-color:var(--border);background:var(--accent-l);}
+.mention-thumb{width:42px;height:34px;border:1px solid var(--border);border-radius:6px;background:#050706;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--faint);font-family:'DM Mono',monospace;font-size:8px;}
+.mention-thumb img,.mention-thumb video{width:100%;height:100%;object-fit:contain;background:#050706;display:block;}
+.mention-title{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mention-meta{font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;color:var(--faint);margin-top:2px;}
 .lyrics-panel{display:flex;flex-direction:column;gap:10px;}
 .song-card{border:1px solid var(--border);border-radius:var(--r);background:var(--surface-soft);padding:10px;display:flex;flex-direction:column;gap:8px;}
 .song-row{display:flex;gap:7px;align-items:center;}
@@ -2754,9 +2761,11 @@ function renderAIChat(b,provider){
   });
   const box=document.createElement('div');box.className='chat-box';
   const input=document.createElement('textarea');input.className='chat-input';input.placeholder='Tell the board what to change...';
+  const mentionPicker=document.createElement('div');mentionPicker.className='mention-picker';mentionPicker.style.display='none';
+  attachMentionPicker(input,mentionPicker);
   input.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat(input.value,provider);}};
   const send=document.createElement('button');send.className='btn btn-primary chat-send';send.textContent='Send';send.onclick=()=>sendChat(input.value,provider);
-  box.appendChild(input);box.appendChild(send);w.appendChild(cfg);w.appendChild(log);w.appendChild(box);b.appendChild(w);
+  box.appendChild(input);box.appendChild(mentionPicker);box.appendChild(send);w.appendChild(cfg);w.appendChild(log);w.appendChild(box);b.appendChild(w);
   requestAnimationFrame(()=>{log.scrollTop=log.scrollHeight;input.focus();});
 }
 
@@ -2834,6 +2843,62 @@ function setClaudeKey(value){
 }
 function getClaudeModel(){return localStorage.getItem('jdb_claude_model')||'claude-sonnet-4-5';}
 function setClaudeModel(value){localStorage.setItem('jdb_claude_model',String(value||'claude-sonnet-4-5').trim()||'claude-sonnet-4-5');}
+function mentionChoices(){
+  const choices=[];
+  (assetsData.sections||[]).forEach(section=>(section.cards||[]).forEach(card=>{
+    const media=[...(card.references||[]).map((item,i)=>({item,bucket:'Reference',index:i+1})),...(card.finals||[]).map((item,i)=>({item,bucket:'Final',index:i+1}))].filter(entry=>entry.item&&entry.item.type!=='video'&&isCloudMedia(entry.item));
+    if(media.length){
+      choices.push({label:'Asset: '+(card.title||'Untitled asset'),meta:section.name+' · all images',token:'@[Asset:'+card.id+']',media:media[0].item});
+      media.forEach(entry=>choices.push({label:(card.title||'Untitled asset')+' · '+entry.bucket+' '+entry.index,meta:section.name,token:'@[AssetImage:'+card.id+':'+entry.bucket.toLowerCase()+':'+entry.index+']',media:entry.item}));
+    }
+  }));
+  scenes.forEach(scene=>(scene.media||[]).filter(item=>item&&item.type!=='video'&&isCloudMedia(item)).forEach((item,i)=>{
+    choices.push({label:'Scene '+scene.num+' · Image '+(i+1),meta:scene.title||scene.act||'Storyboard card',token:'@[SceneImage:'+scene.id+':'+(i+1)+']',media:item});
+  }));
+  moodboard.filter(item=>item&&!item.kind&&item.type!=='video'&&isCloudMedia(item)).forEach((item,i)=>{
+    choices.push({label:'Moodboard · Image '+(i+1),meta:item.name||'Reference',token:'@[MoodImage:'+item.id+']',media:item});
+  });
+  return choices;
+}
+function attachMentionPicker(input,picker){
+  const hide=()=>{picker.style.display='none';picker.innerHTML='';};
+  const insertToken=token=>{
+    const start=input.selectionStart??input.value.length;
+    const before=input.value.slice(0,start);
+    const at=before.lastIndexOf('@');
+    const from=at>=0?at:start;
+    input.value=input.value.slice(0,from)+token+' '+input.value.slice(start);
+    input.focus();
+    input.selectionStart=input.selectionEnd=from+token.length+1;
+    hide();
+  };
+  const show=()=>{
+    const start=input.selectionStart??input.value.length;
+    const before=input.value.slice(0,start);
+    const at=before.lastIndexOf('@');
+    if(at<0){hide();return;}
+    const query=before.slice(at+1).toLowerCase();
+    if(/\s/.test(query)){hide();return;}
+    const choices=mentionChoices().filter(choice=>(choice.label+' '+choice.meta).toLowerCase().includes(query)).slice(0,24);
+    picker.innerHTML='';
+    if(!choices.length){picker.style.display='none';return;}
+    choices.forEach(choice=>{
+      const btn=document.createElement('button');btn.type='button';btn.className='mention-option';
+      const thumb=document.createElement('div');thumb.className='mention-thumb';
+      if(choice.media?.url){const img=document.createElement('img');img.src=choice.media.url;img.alt='';thumb.appendChild(img);}else thumb.textContent='Ref';
+      const text=document.createElement('div');
+      const title=document.createElement('div');title.className='mention-title';title.textContent=choice.label;
+      const meta=document.createElement('div');meta.className='mention-meta';meta.textContent=choice.meta;
+      text.appendChild(title);text.appendChild(meta);btn.appendChild(thumb);btn.appendChild(text);
+      btn.onclick=()=>insertToken(choice.token);
+      picker.appendChild(btn);
+    });
+    picker.style.display='flex';
+  };
+  input.addEventListener('input',show);
+  input.addEventListener('keyup',show);
+  input.addEventListener('blur',()=>setTimeout(hide,180));
+}
 async function sendChat(value,provider='openai'){
   const text=String(value||'').trim();
   if(!text)return;
@@ -3238,6 +3303,36 @@ function selectedAssetReferenceMedia(){
     .map(item=>({section:section.name||'',asset:card.title||'',name:item.name||'',url:item.url||storagePublicUrl(item.storagePath),storagePath:item.storagePath||'',type:item.type||'image'}))
   ).slice(0,4);
 }
+function mentionedReferenceMedia(text){
+  const refs=[];
+  const addRef=(item,meta={})=>{
+    if(item&&item.type!=='video'&&isCloudMedia(item))refs.push({...meta,name:item.name||'',url:item.url||storagePublicUrl(item.storagePath),storagePath:item.storagePath||'',type:item.type||'image'});
+  };
+  for(const match of String(text||'').matchAll(/@\[Asset:([^\]]+)\]/g)){
+    const id=match[1];
+    (assetsData.sections||[]).forEach(section=>(section.cards||[]).forEach(card=>{
+      if(String(card.id)===id)[...(card.references||[]),...(card.finals||[])].forEach(item=>addRef(item,{section:section.name||'',asset:card.title||''}));
+    }));
+  }
+  for(const match of String(text||'').matchAll(/@\[AssetImage:([^:\]]+):(reference|final):(\d+)\]/g)){
+    const [_,id,bucketRaw,indexRaw]=match;
+    const bucket=bucketRaw==='reference'?'references':'finals';
+    const idx=parseInt(indexRaw,10)-1;
+    (assetsData.sections||[]).forEach(section=>(section.cards||[]).forEach(card=>{
+      if(String(card.id)===id)addRef((card[bucket]||[])[idx],{section:section.name||'',asset:card.title||''});
+    }));
+  }
+  for(const match of String(text||'').matchAll(/@\[SceneImage:([^:\]]+):(\d+)\]/g)){
+    const scene=scenes.find(item=>String(item.id)===match[1]);
+    if(scene)addRef((scene.media||[])[parseInt(match[2],10)-1],{section:'Scene '+scene.num,asset:scene.title||''});
+  }
+  for(const match of String(text||'').matchAll(/@\[MoodImage:([^\]]+)\]/g)){
+    const item=moodboard.find(m=>String(m.id)===match[1]);
+    addRef(item,{section:'Moodboard',asset:item?.name||''});
+  }
+  const seen=new Set();
+  return refs.filter(ref=>{const key=ref.storagePath||ref.url;if(!key||seen.has(key))return false;seen.add(key);return true;}).slice(0,4);
+}
 function referencePromptText(refs){
   if(!refs.length)return '';
   return '\n\nUse these selected asset reference images for likeness, design continuity, wardrobe, props, or location details:\n'+refs.map((ref,i)=>(i+1)+'. '+[ref.section,ref.asset,ref.name].filter(Boolean).join(' / ')+' — '+ref.url).join('\n');
@@ -3337,7 +3432,7 @@ async function chatGenerateImages(action){
   const count=Math.max(1,Math.min(4,parseInt(action.count||action.n||1,10)||1));
   const size=normalizeImageSize(action.size||'1536x1024');
   const baseName=action.name||action.title||'ai-storyboard-image';
-  const refs=selectedAssetReferenceMedia();
+  const refs=[...mentionedReferenceMedia(prompt),...selectedAssetReferenceMedia()];
   const generated=[];
   for(let i=0;i<count;i++){
     generated.push(await mediaItemFromGeneratedImage(prompt,{name:cleanGeneratedImageName(baseName,i+1),size,refs}));

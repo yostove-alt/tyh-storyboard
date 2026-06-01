@@ -304,6 +304,11 @@ body.mood-closed .mood-rail{right:0;}
 .script-act-name,.asset-section-name{font-family:'DM Serif Display',serif;font-size:24px;line-height:1;color:var(--text);border:1px solid transparent;border-radius:var(--rs);padding:2px 5px;margin-left:-5px;cursor:pointer;}
 .script-act-name:hover,.asset-section-name:hover{border-color:var(--border);background:var(--surface);}
 .script-card-grid{display:grid;grid-template-columns:1fr;gap:12px;}
+.workspace-select{position:absolute;top:8px;left:8px;width:18px;height:18px;accent-color:var(--accent);z-index:2;}
+.script-card,.asset-card,.asset-thumb-card{position:relative;}
+.script-card.is-selected,.asset-card.is-selected,.asset-thumb-card.is-selected{border-color:var(--accent);box-shadow:0 0 0 2px rgba(23,74,54,.12),0 5px 18px rgba(38,48,32,.05);}
+.script-card.has-select{padding-top:32px;}
+.asset-thumb-card.has-select{padding-left:32px;}
 .script-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;}
 .script-tools select{border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);font-family:'Instrument Sans',sans-serif;color:var(--text);font-size:13px;padding:8px 9px;outline:none;}
 .story-ai{border:1px solid var(--border);border-radius:var(--r);background:var(--surface-soft);padding:10px;margin-top:10px;display:flex;flex-direction:column;gap:8px;}
@@ -1102,6 +1107,9 @@ let currentPlaybackSceneId=null;
 let currentPlaybackStart=null;
 let songInfo=loadSongInfo();
 let selectedSceneIds=new Set();
+let selectedStoryCardIds=new Set();
+let selectedScriptCardIds=new Set();
+let selectedAssetCardIds=new Set();
 let chatMessages=[{role:'assistant',text:'Board ready.'}];
 let claudeMessages=[{role:'assistant',text:'Claude board chat ready.'}];
 let activeAgentProvider=loadAgentProvider();
@@ -1768,7 +1776,7 @@ function renderStoryboardMenu(){
 }
 function reloadBoardState(){
   if(globalAudio){globalAudio.pause();globalAudio=null;}
-  selectedSceneIds.clear();
+  clearWorkspaceSelection();
   sectionEnd=null;currentPlaybackSceneId=null;currentPlaybackStart=null;
   scenes=restoreMissingStarterLyrics(loadScenes());
   fieldSettings=loadFieldSettings();
@@ -2505,13 +2513,15 @@ function renderLyricsPanel(b){
   transcribe.onclick=()=>transcribeSongFile(transcribe,lyrics);
   const sync=document.createElement('button');sync.className='btn btn-sm';sync.textContent='Add to scene lyrics';
   sync.onclick=()=>syncMasterLyricsToScenes(lyrics.value);
+  const scriptSync=document.createElement('button');scriptSync.className='btn btn-sm';scriptSync.textContent='Add to script page';
+  scriptSync.onclick=()=>syncMasterLyricsToScript(lyrics.value);
   const restore=document.createElement('button');restore.className='btn btn-sm';restore.textContent='Restore old lyrics';
   restore.onclick=()=>{songInfo.lyrics=defaultMasterLyrics();saveSongInfo();lyrics.value=songInfo.lyrics;toast('Original lyrics restored');};
   const clear=document.createElement('button');clear.className='btn btn-sm';clear.textContent='Clear lyrics';
   clear.onclick=()=>{songInfo.lyrics='';saveSongInfo();renderPanel();};
-  actions.appendChild(transcribe);actions.appendChild(sync);actions.appendChild(restore);actions.appendChild(clear);w.appendChild(actions);
+  actions.appendChild(transcribe);actions.appendChild(sync);actions.appendChild(scriptSync);actions.appendChild(restore);actions.appendChild(clear);w.appendChild(actions);
   const note=document.createElement('div');note.className='song-note';
-  note.textContent='Auto transcribe uses ElevenLabs Speech to Text. If cards are selected, “Add to scene lyrics” only updates those cards.';
+  note.textContent='Auto transcribe uses ElevenLabs Speech to Text. If cards are selected, “Add to scene lyrics” only updates those cards. “Add to script page” turns timestamp blocks into editable Script beats.';
   w.appendChild(note);b.appendChild(w);
 }
 
@@ -2566,6 +2576,35 @@ function syncMasterLyricsToScenes(value){
     item.scene.lyrics=lines.slice(start,Math.max(start+1,end)).join('\n');
   });
   save();render();toast('Lyrics added to '+(selectedSceneIds.size?'selected':'timed')+' scenes');
+}
+function syncMasterLyricsToScript(value){
+  if(viewOnlyMode)return;
+  const items=parseLyricsTimeline(value);
+  if(!items.length){toast('No timestamp blocks found for Script');return;}
+  const replace=!scriptCardsFlat().some(({card})=>card.title||card.timing||card.dialogue||card.visual)||confirm('Replace current Script beats with timestamped lyrics?\n\nOK = replace\nCancel = append');
+  const groups=[];
+  items.forEach(item=>{
+    const name=item.section||'Song lyrics';
+    let group=groups.find(g=>g.name===name);
+    if(!group){group={id:newMediaId(),name,cards:[]};groups.push(group);}
+    const tc=parseTimecode(item.time);
+    const duration=tc&&tc.end!==null?Math.max(0,Math.round(tc.end-tc.start))+' sec':'';
+    group.cards.push({
+      id:newMediaId(),
+      title:item.title||item.section||'Lyric beat',
+      purpose:'',
+      timing:item.time||'',
+      duration,
+      dialogue:item.lyrics||'',
+      visual:'',
+      hint:'Generated from Music lyrics',
+      text:item.lyrics||'',
+      media:[]
+    });
+  });
+  if(replace)timedScriptData={story:'',summary:'',storyPrompt:'',acts:groups};
+  else timedScriptData.acts=[...(timedScriptData.acts||[]),...groups];
+  saveTimedScriptData();setBoardView('script');toast((replace?'Added':'Appended')+' '+items.length+' lyric beat'+(items.length!==1?'s':'')+' to Script');
 }
 
 function renderAgentPanel(b){renderAIChat(b,activeAgentProvider);}
@@ -2809,6 +2848,21 @@ function visibleScenes(){
 function selectedScenes(){
   return scenes.filter(scene=>selectedSceneIds.has(scene.id));
 }
+function selectedStoryCards(){
+  return (scriptData.acts||[]).flatMap(act=>(act.cards||[]).filter(card=>selectedStoryCardIds.has(card.id)).map(card=>({act,card})));
+}
+function selectedScriptCards(){
+  return (timedScriptData.acts||[]).flatMap(act=>(act.cards||[]).filter(card=>selectedScriptCardIds.has(card.id)).map(card=>({act,card})));
+}
+function selectedAssets(){
+  return (assetsData.sections||[]).flatMap(section=>(section.cards||[]).filter(card=>selectedAssetCardIds.has(card.id)).map(card=>({section,card})));
+}
+function selectedWorkspaceCount(){
+  return selectedSceneIds.size+selectedStoryCardIds.size+selectedScriptCardIds.size+selectedAssetCardIds.size;
+}
+function clearWorkspaceSelection(){
+  selectedSceneIds.clear();selectedStoryCardIds.clear();selectedScriptCardIds.clear();selectedAssetCardIds.clear();
+}
 function deleteSelectedScenes(){
   const count=selectedSceneIds.size;
   if(!count)return;
@@ -2821,16 +2875,17 @@ function renderSelectionBar(){
   const bar=document.getElementById('selectionBar');
   if(!bar)return;
   bar.innerHTML='';
-  const count=selectedSceneIds.size;
+  const count=selectedWorkspaceCount();
   bar.classList.toggle('show',!!count);
   if(!count)return;
-  const label=document.createElement('strong');label.textContent=count+' selected card'+(count===1?'':'s');
-  const use=document.createElement('span');use.textContent='Agent and Music will use this selection.';
+  const label=document.createElement('strong');label.textContent=count+' selected item'+(count===1?'':'s');
+  const use=document.createElement('span');use.textContent='Agent, Story AI, Script AI, and Music can use this selection.';
   const clear=document.createElement('button');clear.className='btn btn-sm';clear.textContent='Clear selection';
-  clear.onclick=()=>{selectedSceneIds.clear();render();};
+  clear.onclick=()=>{clearWorkspaceSelection();render();};
   const del=document.createElement('button');del.className='btn btn-sm btn-danger';del.textContent='Delete selected';
   del.onclick=deleteSelectedScenes;
-  bar.appendChild(label);bar.appendChild(use);bar.appendChild(clear);bar.appendChild(del);
+  bar.appendChild(label);bar.appendChild(use);bar.appendChild(clear);
+  if(selectedSceneIds.size)bar.appendChild(del);
 }
 function scenesForScope(raw){
   let scope=cleanChatValue(raw||'all');
@@ -3315,6 +3370,7 @@ function boardAgentInstructions(){
     'When the user asks you to make, generate, create, attach, or add an image, concept image, reference image, storyboard frame, character image, prop image, or location image, use generate_image. Use scope "selected" for selected cards unless the user names a different target.',
     'The app will generate images with the selected image generator in the Agent panel: GPT Image 2 or Nano Banana Pro.',
     'Write image prompts as complete production art direction: subject, setting, mood, composition, camera angle, lighting, style, and any visible text if needed.',
+    'Use selected Story cards, Script beats, Assets, and scene cards as the user’s intended context. If selected assets include media URLs, treat them as visual references and describe their important details in the prompt or text you apply.',
     'For shot ideas, prefer add_shots or set_field with field "Key shots" and mode "append". Keep each shot short, visual, and filmable.',
     'For deleting/clearing, use clear_field, remove_text, delete_scene, or delete_scenes. Do not ask for confirmation in JSON; the app treats your action as the requested change.',
     'Prefer exact existing act/location/status/camera names from the board context.',
@@ -3326,16 +3382,51 @@ function sceneForAgent(scene){
   fieldSettings.forEach(field=>{out[field.label||field.key]=field.kind==='shots'?(scene.shots||[]):(scene[field.key]||'');});
   return out;
 }
-function boardAgentContext(userText){
+function storyCardForAI(act,card){
+  return {id:card.id,act:act.name||'',title:card.title||'',hint:card.hint||'',text:card.text||''};
+}
+function scriptCardForAI(act,card){
+  return {id:card.id,act:act.name||'',title:card.title||'',timing:card.timing||'',duration:card.duration||'',dialogue:card.dialogue||card.text||'',visual:card.visual||'',hint:card.hint||''};
+}
+function assetCardForAI(section,card){
   return {
+    id:card.id,
+    section:section.name||'',
+    title:card.title||'',
+    status:normalizeAssetStatus(card.status),
+    tags:card.tags||[],
+    notes:card.notes||'',
+    references:(card.references||[]).map(item=>({type:item.type||'image',name:item.name||'',url:item.url||'',storagePath:item.storagePath||''})),
+    finals:(card.finals||[]).map(item=>({type:item.type||'image',name:item.name||'',url:item.url||'',storagePath:item.storagePath||''}))
+  };
+}
+function workspaceAIContext(extra={}){
+  const storyCards=(scriptData.acts||[]).flatMap(act=>(act.cards||[]).map(card=>storyCardForAI(act,card)));
+  const scriptCards=(timedScriptData.acts||[]).flatMap(act=>(act.cards||[]).map(card=>scriptCardForAI(act,card)));
+  const assetCards=(assetsData.sections||[]).flatMap(section=>(section.cards||[]).map(card=>assetCardForAI(section,card)));
+  return {
+    storyboard:{name:currentStoryboard()?.name||'',scenes:scenes.map(sceneForAgent)},
+    storyPage:{story:scriptData.story||'',cards:storyCards},
+    scriptPage:{cards:scriptCards},
+    assets:{cards:assetCards},
+    selected:{
+      scenes:selectedScenes().map(sceneForAgent),
+      storyCards:selectedStoryCards().map(({act,card})=>storyCardForAI(act,card)),
+      scriptCards:selectedScriptCards().map(({act,card})=>scriptCardForAI(act,card)),
+      assets:selectedAssets().map(({section,card})=>assetCardForAI(section,card))
+    },
+    ...extra
+  };
+}
+function boardAgentContext(userText){
+  return workspaceAIContext({
     user:userText,
     fields:fieldSettings.map(field=>({key:field.key,label:field.label,kind:field.kind,visible:field.visible!==false})),
     acts,locations,statuses,cameras,
     activeFilters,
     selectedSceneIds:[...selectedSceneIds],
-    selectedScenes:selectedScenes().map(sceneForAgent),
-    scenes:scenes.map(sceneForAgent)
-  };
+    selectedScenes:selectedScenes().map(sceneForAgent)
+  });
 }
 function extractResponseText(data){
   if(data.output_text)return data.output_text;
@@ -4019,19 +4110,20 @@ function storyAIInstructions(){
     'Return this shape: {"story":"revised story brief text","acts":[{"name":"Act or section name","cards":[{"title":"editable beat title","text":"editable beat/body text"}]}]}',
     'The user is building short-form film, animation, music video, or Bat Mitzvah video story structure.',
     'Use the existing template structure when it is useful, but fill each editable card with specific story content.',
+    'Use selected scene cards, Script beats, and Assets as the user’s intended context. Selected assets may be characters, props, locations, references, or finals to include in story beats.',
     'Do not write final screenplay dialogue unless the user explicitly asks. This is the Story planning tab, not the Script tab.',
     'Make every card concise, clear, and editable. Prefer specific hooks, setups, turns, emotional beats, and visual story ideas.'
   ].join('\n');
 }
 function storyAIContext(extraPrompt){
-  return {
+  return workspaceAIContext({
     request:extraPrompt,
     currentStory:scriptData.story||'',
     currentActs:(scriptData.acts||[]).map(act=>({
       name:act.name,
       cards:(act.cards||[]).map(card=>({title:card.title||'',hint:card.hint||'',text:card.text||''}))
     }))
-  };
+  });
 }
 function normalizeStoryAIPayload(payload){
   const acts=Array.isArray(payload?.acts)?payload.acts:[];
@@ -4094,6 +4186,7 @@ function scriptAIInstructions(){
     'Return only valid JSON.',
     'Return this shape: {"acts":[{"name":"Act or section name","cards":[{"title":"script beat title","timing":"00:00-00:15","duration":"15 sec","dialogue":"screenplay dialogue or voiceover","visual":"visual notes and action"}]}]}',
     'Use the Story planning tab as the creative source of truth, and use the current Script tab as the editable structure to fill or revise.',
+    'Use selected Story cards, Assets, and scene cards as the user’s intended context. Selected assets may be characters, props, locations, references, or finals that should appear in dialogue or visual notes.',
     'If the user asks to fill the current script fields, keep the current act/card structure where possible and complete the empty fields.',
     'If the user asks for a new version, generate a clean timed script structure appropriate for the format.',
     'Write practical script blocks for production: clear timing, concise dialogue/voiceover, and visual notes that can become storyboard cards.',
@@ -4101,7 +4194,7 @@ function scriptAIInstructions(){
   ].join('\n');
 }
 function scriptAIContext(extraPrompt){
-  return {
+  return workspaceAIContext({
     request:extraPrompt||'Fill the Script tab from the Story page.',
     storyPage:{
       story:scriptData.story||'',
@@ -4123,7 +4216,7 @@ function scriptAIContext(extraPrompt){
         }))
       }))
     }
-  };
+  });
 }
 function normalizeScriptAIPayload(payload){
   const acts=Array.isArray(payload?.acts)?payload.acts:[];
@@ -4214,9 +4307,7 @@ function renderStoryView(board){
     apply.onclick=()=>applyScriptTemplate(templateSelect.value);
     const saveTemplate=document.createElement('button');saveTemplate.className='btn btn-sm';saveTemplate.textContent='Save current as template';
     saveTemplate.onclick=saveCurrentScriptAsTemplate;
-    const generateScript=document.createElement('button');generateScript.className='btn btn-primary';generateScript.textContent='Generate script from story';
-    generateScript.onclick=generateScriptFromStory;
-    tools.appendChild(templateSelect);tools.appendChild(apply);tools.appendChild(saveTemplate);tools.appendChild(generateScript);story.appendChild(tools);
+    tools.appendChild(templateSelect);tools.appendChild(apply);tools.appendChild(saveTemplate);story.appendChild(tools);
   }
   scriptData.acts.forEach((act,actIndex)=>{
     const actEl=document.createElement('section');actEl.className='script-act';
@@ -4230,6 +4321,13 @@ function renderStoryView(board){
     const grid=document.createElement('div');grid.className='script-card-grid';
     act.cards.forEach(card=>{
       const cardEl=document.createElement('article');cardEl.className='script-card';
+      cardEl.classList.add('has-select');
+      cardEl.classList.toggle('is-selected',selectedStoryCardIds.has(card.id));
+      if(!viewOnlyMode){
+        const pick=document.createElement('input');pick.type='checkbox';pick.className='workspace-select';pick.title='Select for AI context';pick.checked=selectedStoryCardIds.has(card.id);
+        pick.onchange=e=>{e.stopPropagation();if(pick.checked)selectedStoryCardIds.add(card.id);else selectedStoryCardIds.delete(card.id);cardEl.classList.toggle('is-selected',pick.checked);renderSelectionBar();};
+        cardEl.appendChild(pick);
+      }
       const title=document.createElement('input');title.placeholder='Sequence title';title.value=card.title||'';title.disabled=viewOnlyMode;
       title.oninput=()=>{card.title=title.value;saveScriptData();};
       const text=document.createElement('textarea');text.placeholder=card.hint||'Write the scenes for this part...';text.value=card.text||card.dialogue||'';text.disabled=viewOnlyMode;
@@ -4264,10 +4362,6 @@ function renderScriptView(board){
     const aiNote=document.createElement('div');aiNote.className='story-ai-note';aiNote.textContent='Reads the Story page and current Script beats. Results stay editable.';
     aiRow.appendChild(providerSel);aiRow.appendChild(aiBtn);aiRow.appendChild(aiNote);
     aiBox.appendChild(aiPrompt);aiBox.appendChild(aiRow);wrap.appendChild(aiBox);
-    const tools=document.createElement('div');tools.className='script-tools';
-    const generate=document.createElement('button');generate.className='btn btn-primary';generate.textContent='Generate cards from script';
-    generate.onclick=generateCardsFromScript;
-    tools.appendChild(generate);wrap.appendChild(tools);
   }
   renderScriptTimeline(wrap);
   timedScriptData.acts.forEach((act,actIndex)=>{
@@ -4282,6 +4376,13 @@ function renderScriptView(board){
     const grid=document.createElement('div');grid.className='script-card-grid';
     act.cards.forEach(card=>{
       const cardEl=document.createElement('article');cardEl.className='script-card';
+      cardEl.classList.add('has-select');
+      cardEl.classList.toggle('is-selected',selectedScriptCardIds.has(card.id));
+      if(!viewOnlyMode){
+        const pick=document.createElement('input');pick.type='checkbox';pick.className='workspace-select';pick.title='Select for AI context';pick.checked=selectedScriptCardIds.has(card.id);
+        pick.onchange=e=>{e.stopPropagation();if(pick.checked)selectedScriptCardIds.add(card.id);else selectedScriptCardIds.delete(card.id);cardEl.classList.toggle('is-selected',pick.checked);renderSelectionBar();};
+        cardEl.appendChild(pick);
+      }
       const title=document.createElement('input');title.placeholder='Script beat title';title.value=card.title||'';title.disabled=viewOnlyMode;
       title.oninput=()=>{card.title=title.value;saveTimedScriptData();};
       const meta=document.createElement('div');meta.className='script-card-meta';
@@ -4523,8 +4624,16 @@ function renderAssetTags(tags){
 }
 function renderAssetThumb(card,section){
   const btn=document.createElement('button');btn.type='button';btn.className='asset-thumb-card';
+  btn.classList.add('has-select');
   btn.classList.toggle('active',selectedAssetIds[section.id]===card.id);
+  btn.classList.toggle('is-selected',selectedAssetCardIds.has(card.id));
   btn.onclick=()=>{selectedAssetIds[section.id]=card.id;render();};
+  if(!viewOnlyMode){
+    const pick=document.createElement('input');pick.type='checkbox';pick.className='workspace-select';pick.title='Select for AI context';pick.checked=selectedAssetCardIds.has(card.id);
+    pick.onclick=e=>e.stopPropagation();
+    pick.onchange=e=>{e.stopPropagation();if(pick.checked)selectedAssetCardIds.add(card.id);else selectedAssetCardIds.delete(card.id);btn.classList.toggle('is-selected',pick.checked);renderSelectionBar();};
+    btn.appendChild(pick);
+  }
   const media=document.createElement('div');media.className='asset-thumb-media';
   const item=assetCardThumbMedia(card);
   if(item){
@@ -4593,6 +4702,13 @@ function renderAssetDetail(section,card){
     const empty=document.createElement('div');empty.className='assets-intro';empty.textContent='Select an asset on the left.';detail.appendChild(empty);return detail;
   }
   const cardEl=document.createElement('article');cardEl.className='asset-card';
+  cardEl.classList.toggle('is-selected',selectedAssetCardIds.has(card.id));
+  if(!viewOnlyMode){
+    const pick=document.createElement('input');pick.type='checkbox';pick.className='workspace-select';pick.title='Select for AI context';pick.checked=selectedAssetCardIds.has(card.id);
+    pick.onchange=e=>{e.stopPropagation();if(pick.checked)selectedAssetCardIds.add(card.id);else selectedAssetCardIds.delete(card.id);cardEl.classList.toggle('is-selected',pick.checked);renderSelectionBar();render();};
+    cardEl.appendChild(pick);
+    cardEl.style.paddingTop='32px';
+  }
   const title=document.createElement('input');title.placeholder='Asset title';title.value=card.title||'';title.disabled=viewOnlyMode;
   let titleSaveTimer=null;
   const commitTitle=shouldRender=>{
@@ -4698,6 +4814,9 @@ function getGroups(field){
 function render(){
   swiperControllers.clear();
   selectedSceneIds=new Set([...selectedSceneIds].filter(id=>scenes.some(scene=>scene.id===id)));
+  selectedStoryCardIds=new Set([...selectedStoryCardIds].filter(id=>(scriptData.acts||[]).some(act=>(act.cards||[]).some(card=>card.id===id))));
+  selectedScriptCardIds=new Set([...selectedScriptCardIds].filter(id=>(timedScriptData.acts||[]).some(act=>(act.cards||[]).some(card=>card.id===id))));
+  selectedAssetCardIds=new Set([...selectedAssetCardIds].filter(id=>(assetsData.sections||[]).some(section=>(section.cards||[]).some(card=>card.id===id))));
   renderSelectionBar();
   refreshFilterOptions();
   applyViewToolbar();

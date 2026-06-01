@@ -2982,12 +2982,20 @@ async function sendChat(value,provider='openai'){
     messages.push({role:'assistant',text:'Thinking...'});
     renderPanel();
     const idx=messages.length-1;
-    messages[idx]={role:'assistant',text:isClaude?await runClaudeAgent(text,key):await runOpenAIAgent(text,key)};
+    const reply=isClaude?await runClaudeAgent(text,key):await runOpenAIAgent(text,key);
+    messages[idx]={role:'assistant',text:await applyActionsFromAssistantText(reply)};
   }else{
     const reply=runBoardChat(text);
     messages.push({role:'assistant',text:reply});
   }
   renderPanel();
+}
+async function applyActionsFromAssistantText(reply){
+  const payload=parseAgentPayload(reply);
+  if(!payload.actions?.length)return reply;
+  const results=await applyAgentActions(payload.actions);
+  const msg=payload.message||'Done.';
+  return results.length?msg+'\n\nApplied: '+results.join(' '):reply;
 }
 function normChat(value){
   return String(value||'').toLowerCase().replace(/[’']/g,'').replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
@@ -3084,8 +3092,21 @@ function selectedScriptCards(){
 function selectedAssets(){
   return (assetsData.sections||[]).flatMap(section=>(section.cards||[]).filter(card=>selectedAssetCardIds.has(card.id)).map(card=>({section,card})));
 }
+function visibleStoryCards(){
+  return (scriptData.acts||[]).flatMap(act=>(act.cards||[]).map(card=>({act,card})));
+}
+function visibleScriptCards(){
+  return (timedScriptData.acts||[]).flatMap(act=>(act.cards||[]).map(card=>({act,card})));
+}
 function selectedWorkspaceCount(){
   return selectedSceneIds.size+selectedStoryCardIds.size+selectedScriptCardIds.size+selectedAssetCardIds.size;
+}
+function selectVisibleWorkspaceItems(){
+  if(boardView==='story')visibleStoryCards().forEach(({card})=>selectedStoryCardIds.add(card.id));
+  else if(boardView==='script')visibleScriptCards().forEach(({card})=>selectedScriptCardIds.add(card.id));
+  else if(boardView==='assets')(assetsData.sections||[]).forEach(section=>(section.cards||[]).forEach(card=>selectedAssetCardIds.add(card.id)));
+  else visibleScenes().forEach(scene=>selectedSceneIds.add(scene.id));
+  render();
 }
 function clearWorkspaceSelection(){
   selectedSceneIds.clear();selectedStoryCardIds.clear();selectedScriptCardIds.clear();selectedAssetCardIds.clear();
@@ -3109,9 +3130,11 @@ function renderSelectionBar(){
   const use=document.createElement('span');use.textContent='Agent and Music can use this selection.';
   const clear=document.createElement('button');clear.className='btn btn-sm';clear.textContent='Clear selection';
   clear.onclick=()=>{clearWorkspaceSelection();render();};
+  const all=document.createElement('button');all.className='btn btn-sm';all.textContent='Select visible';
+  all.onclick=selectVisibleWorkspaceItems;
   const del=document.createElement('button');del.className='btn btn-sm btn-danger';del.textContent='Delete selected';
   del.onclick=deleteSelectedScenes;
-  bar.appendChild(label);bar.appendChild(use);bar.appendChild(clear);
+  bar.appendChild(label);bar.appendChild(use);bar.appendChild(all);bar.appendChild(clear);
   if(selectedSceneIds.size)bar.appendChild(del);
 }
 function scenesForScope(raw){
@@ -3756,6 +3779,11 @@ function updateStoryCardAction(action){
     const idx=Math.max(0,(parseInt(action.index||action.number||action.position||'1',10)||1)-1);
     target=selected[idx]||selected.find(card=>!String(card.text||'').trim())||selected[0]||null;
   }
+  if(!target&&boardView==='story'){
+    const visible=visibleStoryCards().map(({card})=>card);
+    const idx=Math.max(0,(parseInt(action.index||action.number||action.position||'1',10)||1)-1);
+    target=visible[idx]||visible.find(card=>!String(card.text||'').trim())||visible[0]||null;
+  }
   if(!target)return 'I could not find that Story card.';
   const append=action.mode==='append';
   if(action.title!==undefined)target.title=append&&target.title?[target.title,action.title].join('\n'):String(action.title||'');
@@ -3776,6 +3804,11 @@ function updateScriptCardAction(action){
     const selected=selectedScriptCards().map(({card})=>card);
     const idx=Math.max(0,(parseInt(action.index||action.number||action.position||'1',10)||1)-1);
     target=selected[idx]||selected.find(card=>!String(card.dialogue||card.visual||'').trim())||selected[0]||null;
+  }
+  if(!target&&boardView==='script'){
+    const visible=visibleScriptCards().map(({card})=>card);
+    const idx=Math.max(0,(parseInt(action.index||action.number||action.position||'1',10)||1)-1);
+    target=visible[idx]||visible.find(card=>!String(card.dialogue||card.visual||'').trim())||visible[0]||null;
   }
   if(!target)return 'I could not find that Script beat.';
   const append=action.mode==='append';
@@ -3836,6 +3869,32 @@ function extractResponseText(data){
   }
   return '';
 }
+function jsonCandidatesFromText(text){
+  const source=String(text||'');
+  const candidates=[];
+  let start=-1,depth=0,inString=false,escape=false;
+  for(let i=0;i<source.length;i++){
+    const ch=source[i];
+    if(inString){
+      if(escape)escape=false;
+      else if(ch==='\\')escape=true;
+      else if(ch==='"')inString=false;
+      continue;
+    }
+    if(ch==='"'){inString=true;continue;}
+    if(ch==='{'||ch==='['){
+      if(depth===0)start=i;
+      depth++;
+    }else if((ch==='}'||ch===']')&&depth>0){
+      depth--;
+      if(depth===0&&start>=0){
+        candidates.push(source.slice(start,i+1));
+        start=-1;
+      }
+    }
+  }
+  return candidates.reverse();
+}
 function parseAgentPayload(text){
   const raw=String(text||'').trim();
   if(!raw)return {message:'No response came back.',actions:[]};
@@ -3859,6 +3918,12 @@ function parseAgentPayload(text){
   };
   try{return normalizePayload(JSON.parse(raw));}
   catch(e){
+    for(const candidate of jsonCandidatesFromText(raw)){
+      try{
+        const parsed=normalizePayload(JSON.parse(candidate));
+        if(parsed.actions?.length||candidate.includes('"actions"'))return parsed;
+      }catch(err){}
+    }
     const match=raw.match(/\{[\s\S]*\}/);
     if(match){try{return normalizePayload(JSON.parse(match[0]));}catch(err){}}
   }

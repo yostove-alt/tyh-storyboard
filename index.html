@@ -363,6 +363,7 @@ body.mood-closed .mood-rail{right:0;}
 .asset-bucket{border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);padding:7px;display:flex;flex-direction:column;gap:7px;}
 .asset-bucket.drag-over{border-color:var(--accent);background:var(--accent-l);box-shadow:0 0 0 3px rgba(42,92,63,.14);}
 .asset-preview{aspect-ratio:16/9;border:1px solid var(--border);border-radius:var(--rs);background:#EEF1EA;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--faint);cursor:pointer;}
+.asset-bucket .mood-cloud-badge{position:absolute;top:6px;left:6px;z-index:3;}
 .asset-preview img,.asset-preview video{width:100%;height:100%;object-fit:contain;background:#050706;display:block;}
 .asset-preview-empty{font-family:'DM Mono',monospace;font-size:10px;text-align:center;text-transform:uppercase;letter-spacing:.04em;padding:10px;}
 .asset-thumb-strip{display:flex;gap:7px;overflow-x:auto;padding-bottom:2px;}
@@ -1527,6 +1528,8 @@ function sharedBoardValue(key,value){
     return JSON.stringify(defaultTimedScriptData());
   }
   if(key==='jdb_assets'){
+    const localOnly=assetLocalOnlyCount();
+    if(localOnly)throw new Error(localOnly+' asset media file(s) are still local-only. Cloud upload must finish before saving shared.');
     try{return JSON.stringify(withoutSharedHeavyAssets(JSON.parse(value)));}catch(e){}
     return JSON.stringify(defaultAssetsData());
   }
@@ -1893,6 +1896,8 @@ function deleteStoryboard(id){
 // ── SHARED DATABASE SAVE ──
 async function collectSharedSnapshot(){
   await syncLocalMediaToCloud({notify:false});
+  const assetLocal=assetLocalOnlyCount();
+  if(assetLocal)throw new Error(assetLocal+' asset media file(s) are still local-only. Check Supabase Storage, then try Save shared again.');
   normalizeCloudMediaReferences();
   save();
   const boards={};
@@ -2021,6 +2026,9 @@ function isCloudMedia(item){
 }
 function isLocalOnlyMedia(item){
   return !!(item&&!item.kind&&!isCloudMedia(item));
+}
+function assetLocalOnlyCount(data=assetsData){
+  return assetMediaItems(data).filter(isLocalOnlyMedia).length;
 }
 function mediaCloudCounts(){
   const items=[...scenes.flatMap(scene=>scene.media||[]),...moodboard.filter(item=>item&&!item.kind),...scriptMediaItems(),...assetMediaItems()];
@@ -4456,6 +4464,7 @@ async function persistAssetMediaChange(message){
     saveAssetsData();
     const btn=document.getElementById('saveCloudBtn');
     if(btn)await saveSharedBoardsToCloud(btn);
+    render();
   }catch(e){
     toast('Asset saved locally, but cloud sync failed: '+((e&&e.message)||'unknown error'),7000);
   }
@@ -4603,6 +4612,8 @@ function renderAssetMediaBucket(card,bucket,label){
     preview.onclick=()=>openLB(items,activeIndex,label);
     if(item.type==='video')preview.appendChild(prepareVideoThumb(document.createElement('video'),item.url));
     else{const img=document.createElement('img');img.src=item.url;img.alt='';img.loading='lazy';img.decoding='async';preview.appendChild(img);}
+    const badge=document.createElement('div');badge.className='mood-cloud-badge'+(isCloudMedia(item)?' cloud':'');badge.textContent=isCloudMedia(item)?'Cloud':'Local';
+    preview.appendChild(badge);
   }else{
     const empty=document.createElement('div');empty.className='asset-preview-empty';empty.textContent=viewOnlyMode?'No media':'Drop files or click + Add';preview.appendChild(empty);
     if(!viewOnlyMode)preview.onclick=()=>addAssetMedia(card,bucket);

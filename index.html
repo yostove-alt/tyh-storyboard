@@ -1276,7 +1276,6 @@ function loadScriptData(){
   return defaultScriptData();
 }
 function saveScriptData(){
-  scriptData=normalizeScriptData(scriptData);
   boardSet('jdb_script',JSON.stringify(localScriptRecord(scriptData)));
   touchStoryboard();
 }
@@ -1384,7 +1383,6 @@ function loadAssetsData(){
   return defaultAssetsData();
 }
 function saveAssetsData(){
-  assetsData=normalizeAssetsData(assetsData);
   boardSet('jdb_assets',JSON.stringify(localAssetsRecord(assetsData)));
   touchStoryboard();
 }
@@ -1985,6 +1983,7 @@ function browserCanPreviewHeic(file){
   return !/\.hei[cf]$/i.test(file.name)||/Safari/i.test(navigator.userAgent)&&!/Chrome|Chromium|CriOS/i.test(navigator.userAgent);
 }
 let heicConverterPromise=null;
+let heicToConverterPromise=null;
 function currentHeicConverter(){
   const candidate=window.heic2any?.default||window.heic2any;
   return typeof candidate==='function'?candidate:null;
@@ -2026,12 +2025,43 @@ async function loadHeicConverter(){
   })();
   return heicConverterPromise;
 }
+async function loadHeicToConverter(){
+  if(heicToConverterPromise)return heicToConverterPromise;
+  heicToConverterPromise=(async()=>{
+    const urls=[
+      'https://cdn.jsdelivr.net/npm/heic-to@1.5.2/dist/heic-to.js',
+      'https://unpkg.com/heic-to@1.5.2/dist/heic-to.js',
+      'https://esm.sh/heic-to@1.5.2'
+    ];
+    const errors=[];
+    for(const url of urls){
+      try{
+        const mod=await import(url);
+        const converter=mod.heicTo||mod.default?.heicTo||mod.default;
+        if(typeof converter==='function')return converter;
+      }catch(e){errors.push(e.message||String(e));}
+    }
+    heicToConverterPromise=null;
+    throw new Error(errors.join(' | ')||'alternate HEIC converter unavailable');
+  })();
+  return heicToConverterPromise;
+}
 async function convertHeicToJpeg(file){
   if(!isHeicFile(file))return file;
-  const heic2any=await loadHeicConverter();
-  const converted=await heic2any({blob:file,toType:'image/jpeg',quality:0.92});
-  const blob=Array.isArray(converted)?converted[0]:converted;
-  if(!(blob instanceof Blob))throw new Error('HEIC conversion failed');
+  let blob=null;
+  const errors=[];
+  try{
+    const heic2any=await loadHeicConverter();
+    const converted=await heic2any({blob:file,toType:'image/jpeg',quality:0.92});
+    blob=Array.isArray(converted)?converted[0]:converted;
+  }catch(e){errors.push('heic2any: '+(e.message||String(e)));}
+  if(!(blob instanceof Blob)){
+    try{
+      const heicTo=await loadHeicToConverter();
+      blob=await heicTo({blob:file,type:'image/jpeg',quality:0.92});
+    }catch(e){errors.push('heic-to: '+(e.message||String(e)));}
+  }
+  if(!(blob instanceof Blob))throw new Error(errors.join(' | ')||'HEIC conversion failed');
   return new File([blob],jpegNameForHeic(file.name),{type:'image/jpeg'});
 }
 function storagePublicUrl(path){

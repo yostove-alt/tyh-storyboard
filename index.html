@@ -1128,6 +1128,7 @@ function localMediaRecord(m){
   if(!m)return null;
   if(m.storagePath&&!isShareableMediaUrl(m.url))m.url=storagePublicUrl(m.storagePath);
   if(m.storedId)return {type:m.type||'image',name:m.name||'',url:isCloudMedia(m)?m.url:'',storedId:m.storedId,storagePath:m.storagePath||'',size:m.size||0};
+  if(isCloudMedia(m))return {type:m.type||'image',name:m.name||'',url:m.url||storagePublicUrl(m.storagePath),storagePath:m.storagePath||'',size:m.size||0};
   if(m.transient||String(m.url||'').startsWith('blob:'))return null;
   return {type:m.type||'image',name:m.name||'',url:m.url||''};
 }
@@ -4433,6 +4434,20 @@ function addAssetCard(section){
   selectedAssetIds[section.id]=card.id;
   saveAssetsData();render();
 }
+async function persistAssetMediaChange(message){
+  saveAssetsData();
+  render();
+  if(message)toast(message);
+  if(!cloudConfigured()||!getCloudSession())return;
+  try{
+    await syncLocalMediaToCloud({notify:false});
+    saveAssetsData();
+    const btn=document.getElementById('saveCloudBtn');
+    if(btn)await saveSharedBoardsToCloud(btn);
+  }catch(e){
+    toast('Asset saved locally, but cloud sync failed: '+((e&&e.message)||'unknown error'),7000);
+  }
+}
 function copyAssetMediaList(list){
   return (Array.isArray(list)?list:[]).map(item=>({...item}));
 }
@@ -4543,24 +4558,24 @@ function addAssetMedia(card,bucket){
   if(viewOnlyMode)return;
   const input=document.createElement('input');
   input.type='file';input.accept='image/*,video/*,.heic,.mov,.mp4,.webm';input.multiple=true;
-  input.onchange=()=>readLocalMediaFiles(Array.from(input.files||[]),results=>{
+  input.onchange=()=>readLocalMediaFiles(Array.from(input.files||[]),async results=>{
     card[bucket]=[...(card[bucket]||[]),...results.filter(Boolean)];
-    saveAssetsData();render();toast(results.length+' asset file(s) added');
+    await persistAssetMediaChange(results.length+' asset file(s) added');
   });
   input.click();
 }
 function addAssetDroppedFiles(card,bucket,files){
   if(viewOnlyMode)return;
-  readLocalMediaFiles(Array.from(files||[]),results=>{
+  readLocalMediaFiles(Array.from(files||[]),async results=>{
     if(!results.length)return;
     card[bucket]=[...(card[bucket]||[]),...results.filter(Boolean)];
-    saveAssetsData();render();toast(results.length+' asset file(s) added');
+    await persistAssetMediaChange(results.length+' asset file(s) added');
   });
 }
 function removeAssetMedia(card,bucket,index){
   if(viewOnlyMode)return;
   card[bucket].splice(index,1);
-  saveAssetsData();render();
+  persistAssetMediaChange('Asset media removed');
 }
 function renderAssetMediaBucket(card,bucket,label){
   const wrap=document.createElement('div');wrap.className='asset-bucket';

@@ -319,6 +319,16 @@ body.mood-closed .mood-rail{right:0;}
 .asset-tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px;}
 .asset-tag{font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:.04em;color:var(--accent);background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:2px 5px;}
 .asset-tag-group{font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);padding:8px 4px 2px;}
+.asset-import-panel{border:1px solid var(--border);border-radius:var(--r);background:var(--surface);padding:10px;margin-bottom:12px;box-shadow:0 5px 18px rgba(38,48,32,.05);}
+.asset-import-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+.asset-import-head select{border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);font-family:'Instrument Sans',sans-serif;font-size:13px;padding:8px 9px;outline:none;min-width:220px;}
+.asset-import-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:7px;max-height:260px;overflow:auto;}
+.asset-import-choice{display:grid;grid-template-columns:auto 46px minmax(0,1fr);gap:8px;align-items:center;border:1px solid var(--border);border-radius:var(--rs);background:var(--surface-soft);padding:7px;cursor:pointer;}
+.asset-import-choice input{accent-color:var(--accent);}
+.asset-import-thumb{width:46px;aspect-ratio:1/1;border:1px solid var(--border);border-radius:6px;background:#050706;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--faint);font-family:'DM Mono',monospace;font-size:9px;}
+.asset-import-thumb img,.asset-import-thumb video{width:100%;height:100%;object-fit:contain;background:#050706;display:block;}
+.asset-import-name{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.asset-import-meta{font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;color:var(--faint);margin-top:2px;}
 .asset-detail{min-width:0;}
 .script-card,.asset-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px;box-shadow:0 5px 18px rgba(38,48,32,.05);display:flex;flex-direction:column;gap:9px;}
 .asset-card{width:100%;}
@@ -1071,6 +1081,7 @@ let assetsGroupByTag=false;
 let assetSearchTerms={};
 let assetSearchTimer=null;
 let assetMediaIndexes={};
+let assetImportState={};
 let swiperControllers=new Map();
 let currentPlaybackSceneId=null;
 let currentPlaybackStart=null;
@@ -3810,31 +3821,84 @@ function assetsFromBoard(boardId){
   }catch(e){}
   return null;
 }
-function importAssetFromBoard(section){
-  if(viewOnlyMode)return;
+function matchingAssetsFromBoard(boardId,section){
   const targetName=String(section.name||'').toLowerCase();
+  const board=storyboards.find(item=>item.id===boardId);
+  const data=assetsFromBoard(boardId);
   const choices=[];
-  storyboards.forEach(board=>{
-    if(board.id===activeStoryboardId)return;
-    const data=assetsFromBoard(board.id);
-    (data?.sections||[]).forEach(sourceSection=>{
-      const sourceName=String(sourceSection.name||'').toLowerCase();
-      const sameKind=sourceName===targetName;
-      (sourceSection.cards||[]).forEach(card=>{
-        if(!sameKind&&['characters','props','locations'].includes(targetName))return;
-        choices.push({board,section:sourceSection,card});
-      });
+  (data?.sections||[]).forEach(sourceSection=>{
+    const sourceName=String(sourceSection.name||'').toLowerCase();
+    const sameKind=sourceName===targetName;
+    (sourceSection.cards||[]).forEach(card=>{
+      if(!sameKind&&['characters','props','locations'].includes(targetName))return;
+      choices.push({board,section:sourceSection,card});
     });
   });
-  if(!choices.length){toast('No matching assets found in other boards');return;}
-  const list=choices.map((item,index)=>`${index+1}. ${item.board.name} / ${item.section.name}: ${item.card.title||'Untitled asset'}`).join('\n');
-  const answer=prompt('Import which asset?\n\n'+list);
-  const idx=parseInt(answer,10)-1;
-  if(Number.isNaN(idx)||!choices[idx])return;
-  const imported=cloneAssetCard(choices[idx].card);
-  section.cards.push(imported);
-  selectedAssetIds[section.id]=imported.id;
-  saveAssetsData();render();toast('Asset imported');
+  return choices;
+}
+function openAssetImport(section){
+  if(viewOnlyMode)return;
+  const boards=storyboards.filter(board=>board.id!==activeStoryboardId&&assetsFromBoard(board.id));
+  if(!boards.length){toast('No other boards with assets yet');return;}
+  const current=assetImportState[section.id]||{};
+  assetImportState[section.id]={open:true,boardId:current.boardId||boards[0].id,selected:new Set()};
+  render();
+}
+function importSelectedAssets(section){
+  const state=assetImportState[section.id];
+  if(!state)return;
+  const choices=matchingAssetsFromBoard(state.boardId,section);
+  const selected=[...(state.selected||new Set())];
+  if(!selected.length){toast('Select assets to import');return;}
+  let last=null;
+  selected.forEach(key=>{
+    const item=choices.find(choice=>choice.card.id===key);
+    if(!item)return;
+    last=cloneAssetCard(item.card);
+    section.cards.push(last);
+  });
+  if(last)selectedAssetIds[section.id]=last.id;
+  assetImportState[section.id]={...state,open:false,selected:new Set()};
+  saveAssetsData();render();toast('Imported '+selected.length+' asset'+(selected.length!==1?'s':''));
+}
+function renderAssetImportPanel(section){
+  const state=assetImportState[section.id];
+  if(!state?.open)return null;
+  const panel=document.createElement('div');panel.className='asset-import-panel';
+  const head=document.createElement('div');head.className='asset-import-head';
+  const select=document.createElement('select');
+  const boards=storyboards.filter(board=>board.id!==activeStoryboardId&&assetsFromBoard(board.id));
+  boards.forEach(board=>{const option=document.createElement('option');option.value=board.id;option.textContent=board.name;select.appendChild(option);});
+  if(!boards.some(board=>board.id===state.boardId))state.boardId=boards[0]?.id||'';
+  select.value=state.boardId;
+  select.onchange=()=>{assetImportState[section.id]={open:true,boardId:select.value,selected:new Set()};render();};
+  const importBtn=document.createElement('button');importBtn.className='btn btn-sm';importBtn.textContent='Import checked';importBtn.onclick=()=>importSelectedAssets(section);
+  const close=document.createElement('button');close.className='btn btn-sm';close.textContent='Close';close.onclick=()=>{assetImportState[section.id]={...state,open:false};render();};
+  head.appendChild(select);head.appendChild(importBtn);head.appendChild(close);panel.appendChild(head);
+  const list=document.createElement('div');list.className='asset-import-list';
+  const choices=matchingAssetsFromBoard(state.boardId,section);
+  if(!choices.length){
+    const empty=document.createElement('div');empty.className='asset-preview-empty';empty.textContent='No matching assets in this board';list.appendChild(empty);
+  }
+  choices.forEach(choice=>{
+    const key=choice.card.id;
+    const row=document.createElement('label');row.className='asset-import-choice';
+    const cb=document.createElement('input');cb.type='checkbox';cb.checked=state.selected?.has(key);
+    cb.onchange=()=>{if(cb.checked)state.selected.add(key);else state.selected.delete(key);};
+    const thumb=document.createElement('div');thumb.className='asset-import-thumb';
+    const media=assetCardThumbMedia(choice.card);
+    if(media?.url){
+      if(media.type==='video')thumb.appendChild(prepareVideoThumb(document.createElement('video'),media.url));
+      else{const img=document.createElement('img');img.src=media.url;img.alt='';img.loading='lazy';img.decoding='async';thumb.appendChild(img);}
+    }else thumb.textContent='No img';
+    const text=document.createElement('div');
+    const name=document.createElement('div');name.className='asset-import-name';name.textContent=choice.card.title||'Untitled asset';
+    const meta=document.createElement('div');meta.className='asset-import-meta';meta.textContent=(choice.section.name||'Assets')+' · '+normalizeAssetStatus(choice.card.status);
+    text.appendChild(name);text.appendChild(meta);
+    row.appendChild(cb);row.appendChild(thumb);row.appendChild(text);list.appendChild(row);
+  });
+  panel.appendChild(list);
+  return panel;
 }
 function deleteAssetCard(section,card){
   if(viewOnlyMode||section.cards.length<2)return;
@@ -4052,9 +4116,11 @@ function renderAssetsView(board){
     hdr.appendChild(name);
     if(!viewOnlyMode){
       const add=document.createElement('button');add.className='btn btn-sm';add.textContent='+ Asset';add.onclick=()=>addAssetCard(section);hdr.appendChild(add);
-      const importBtn=document.createElement('button');importBtn.className='btn btn-sm';importBtn.textContent='Import from board';importBtn.onclick=()=>importAssetFromBoard(section);hdr.appendChild(importBtn);
+      const importBtn=document.createElement('button');importBtn.className='btn btn-sm';importBtn.textContent='Import from board';importBtn.onclick=()=>openAssetImport(section);hdr.appendChild(importBtn);
     }
     sectionEl.appendChild(hdr);
+    const importPanel=renderAssetImportPanel(section);
+    if(importPanel)sectionEl.appendChild(importPanel);
     const searchTerm=assetSearchTerms[section.id]||'';
     const cards=(section.cards||[]).filter(card=>assetCardMatchesFilter(card)&&assetCardMatchesSearch(card,searchTerm));
     if(!cards.some(card=>card.id===selectedAssetIds[section.id]))selectedAssetIds[section.id]=cards[0]?.id||section.cards?.[0]?.id||'';

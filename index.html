@@ -1924,6 +1924,7 @@ async function applySharedSnapshot(snapshot,{silent=false}={}){
   localStorage.setItem(CLOUD_LOADED_KEY,String(snapshot.updatedAt||Date.now()));
   persistStoryboardIndex();
   reloadBoardState();
+  if(typeof restoreStoredBoardMedia==='function')restoreStoredBoardMedia();
   if(!silent)toast('Shared boards loaded');
   return true;
 }
@@ -6133,6 +6134,7 @@ async function restoreStoredBoardMedia(){
   for(const item of assetMediaItems())await restoreItem(item);
   if(changed){render();renderMoodboard();}
 }
+restoreStoredBoardMedia();
 </script>
 </body>
 </html>

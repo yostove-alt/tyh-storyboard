@@ -3089,10 +3089,20 @@ async function sendChat(value,provider='openai'){
 }
 function fallbackAgentActionsForText(text){
   const n=normChat(text);
+  const insert=fallbackInsertSceneAction(text);
+  if(insert)return [insert];
   const wantsCards=(/\b(make|create|generate|build|turn|convert)\b/.test(n)&&/\b(cards?|cards view|scene cards?|storyboard cards?)\b/.test(n)&&/\b(script|script page|full script)\b/.test(n));
   if(wantsCards&&/\b(copy|exactly|directly|one card per beat|same beats)\b/.test(n))return [{type:'make_cards_from_script',replace:!/\b(append|add to existing|keep existing)\b/.test(n)}];
   if(/\b(add|create|generate|make)\b/.test(n)&&/\b(images?|pictures?|frames?)\b/.test(n)&&/\b(all cards?|cards view|storyboard cards?)\b/.test(n))return [{type:'generate_card_images',scope:'all',prompt:text}];
   return [];
+}
+function fallbackInsertSceneAction(text){
+  const raw=String(text||'');
+  if(!/\b(add|create|insert|make)\b/i.test(raw)||!/\b(card|scene)\b/i.test(raw))return null;
+  const pos=raw.match(/\b(before|after)\s+(?:the\s+)?(?:card|scene)?\s*([^,.]+?)(?:\s+(?:and|with|that|which|who|where)\b|[,.]|$)/i);
+  if(!pos)return null;
+  const title=cleanChatValue((raw.match(/\b(?:called|named|titled)\s+([^,.]+)/i)||[])[1]||'Untitled scene');
+  return {type:'insert_scene',position:pos[1].toLowerCase(),target:cleanChatValue(pos[2]),title,note:raw};
 }
 async function applyActionsFromAssistantText(reply,userText=''){
   const payload=parseAgentPayload(reply);
@@ -3783,6 +3793,32 @@ function chatMoveScenes(scopeRaw,{act=null,after=null,before=null}={}){
   syncOptionsFromScenes();save();render();
   return 'Moved '+plural(moving.length,'card')+'.';
 }
+function chatInsertScene(action){
+  const target=findSceneByToken(action.target||action.before||action.after||'');
+  if(!target)return 'I could not find the card to insert near.';
+  const fields=action.fields||{};
+  const scene={
+    id:nextSceneId(),
+    act:action.act||fields.act||target.act,
+    num:'',
+    title:action.title||fields.title||'Untitled scene',
+    time:action.time||action.timecode||fields.time||fields.timecode||'',
+    location:action.location||fields.location||target.location||locations[0]||'Other',
+    status:action.status||fields.status||statuses[0]||'Not shot',
+    lyrics:action.lyrics||fields.lyrics||'',
+    shots:Array.isArray(action.shots)?action.shots:Array.isArray(fields.shots)?fields.shots:[],
+    note:action.note||fields.note||'',
+    camera:Array.isArray(action.camera)?action.camera:Array.isArray(fields.camera)?fields.camera:[],
+    media:[]
+  };
+  fieldSettings.forEach(field=>{if(field.kind!=='shots'&&scene[field.key]===undefined)scene[field.key]=fields[field.key]||fields[field.label]||'';});
+  addOption('act',scene.act);
+  const idx=scenes.findIndex(item=>item.id===target.id);
+  const before=String(action.position||'').toLowerCase()==='before'||action.before;
+  scenes.splice(before?idx:idx+1,0,scene);
+  syncOptionsFromScenes();save();render();
+  return 'Inserted a card '+(before?'before ':'after ')+'Scene '+target.num+'.';
+}
 function chatSummary(){
   const byStatus=statuses.map(status=>status+': '+scenes.filter(scene=>scene.status===status).length).filter(line=>!line.endsWith(': 0'));
   const byAct=acts.map(act=>act+': '+scenes.filter(scene=>scene.act===act).length).filter(line=>!line.endsWith(': 0'));
@@ -3846,6 +3882,7 @@ function boardAgentInstructions(){
     '{"type":"remove_text","scope":"same scope options","field":"field label or all","text":"exact text to remove"}',
     '{"type":"copy_field","field":"field label","from":"scene number/title","to":"all|visible|selected|Act name|Location name|Status name|Camera name"}',
     '{"type":"add_scene","act":"Act name","title":"Title","fields":{"location":"...","status":"...","shots":["..."],"props":"..."}}',
+    '{"type":"insert_scene","position":"before|after","target":"scene number or title","title":"Title","fields":{"lyrics":"...","note":"...","shots":["..."]}}',
     '{"type":"bulk_create_scenes","act":"Act name","cards":[{"title":"Verse title","time":"0:00 – 0:08","lyrics":"lyrics text","fields":{"note":"optional","shots":["optional shot"]}}],"replace":false}',
     '{"type":"generate_image","scope":"selected|visible|all|Act name|scene number/title","prompt":"detailed visual prompt","count":1,"size":"1536x1024|1024x1024|1024x1536|16:9|9:16","name":"optional file name"}',
     '{"type":"generate_card_images","scope":"selected|visible|all|Act name|scene number/title","prompt":"overall visual style/direction","size":"1536x1024|1024x1024|1024x1536|16:9|9:16"}',
@@ -3860,6 +3897,7 @@ function boardAgentInstructions(){
     '{"type":"rename_option","optionType":"act|location|status|camera","from":"old","to":"new"}',
     '{"type":"add_option","optionType":"act|location|status|camera","value":"new"}',
     'Fields include act, num, title, time, location, status, camera, lyrics, shots, note, extras, wardrobe, props, and custom field labels.',
+    'When the user asks to add or insert a card before/after another card, use insert_scene. Identify the target by scene number or title, and fill the new card fields from the user’s description.',
     'When the user pastes song sections with verse labels and timestamps, create one card per verse/timed block, filling title, time, and lyrics.',
     'When the user asks for creative ideas and says to add/apply/fill them in, generate concrete production-ready text and apply it with set_field, set_fields, or add_shots.',
     'When the user asks you to make, generate, create, attach, or add an image, concept image, reference image, storyboard frame, character image, prop image, or location image, use generate_image. Use scope "selected" for selected cards unless the user names a different target.',
@@ -4290,13 +4328,15 @@ async function applyAgentActions(actions){
         });
         syncOptionsFromScenes();save();render();
         results.push('Added Scene '+scene.num+' to '+scene.act+'.');
+      }else if(type==='insert_scene'||type==='insert_card'||type==='add_card_before'||type==='add_card_after'){
+        results.push(chatInsertScene(action));
       }else if(type==='bulk_create_scenes'){
         results.push(bulkCreateScenes(action.cards||action.scenes||[],{act:action.act||activeFilters.act||acts[0],replace:!!action.replace}));
       }else if(type==='generate_image'||type==='generate_images'||type==='create_image'||type==='create_images'||type==='add_image'){
         results.push(await chatGenerateImages(action));
       }else if(type==='generate_card_images'||type==='generate_images_for_cards'||type==='add_images_to_cards'){
         results.push(await chatGenerateCardImages(action));
-      }else if(type==='delete_scenes'){
+      }else if(type==='delete_scenes'||type==='delete_cards'||type==='remove_cards'){
         results.push(chatDeleteScenes(action.scope||action.target||'selected'));
       }else if(type==='move_scenes'){
         results.push(chatMoveScenes(action.scope||action.target||'selected',{act:action.act,after:action.after,before:action.before}));

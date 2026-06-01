@@ -2045,6 +2045,41 @@ function assetLocalOnlyCount(data=assetsData){
 function assetMediaCountFromStoredValue(value){
   try{return assetMediaItems(normalizeAssetsData(JSON.parse(value||'{}'))).length;}catch(e){return 0;}
 }
+function assetDebugSummaryFromData(data){
+  const normalized=normalizeAssetsData(data);
+  const items=assetMediaItems(normalized);
+  return {
+    mediaCount:items.length,
+    cloudCount:items.filter(isCloudMedia).length,
+    localCount:items.filter(isLocalOnlyMedia).length,
+    first:items[0]?{
+      type:items[0].type||'',
+      name:items[0].name||'',
+      url:String(items[0].url||'').slice(0,180),
+      storagePath:items[0].storagePath||'',
+      storedId:items[0].storedId||''
+    }:null
+  };
+}
+async function debugAssetsMedia(){
+  const current=assetDebugSummaryFromData(assetsData);
+  let local={mediaCount:0,error:'No local asset record'};
+  try{
+    const raw=boardStoredValue(activeStoryboardId,'jdb_assets');
+    if(raw)local=assetDebugSummaryFromData(JSON.parse(raw));
+  }catch(e){local={mediaCount:0,error:e.message||'Local parse failed'};}
+  let cloud={mediaCount:0,error:'Cloud not checked'};
+  if(cloudConfigured()){
+    try{
+      const response=await fetchWithTimeout(getSupabaseUrl()+'/rest/v1/'+SUPABASE_TABLE+'?id=eq.'+encodeURIComponent(SUPABASE_ROW_ID)+'&select=data&limit=1',{headers:cloudHeaders(false)},9000);
+      if(!response.ok)throw new Error('Cloud fetch '+response.status);
+      const rows=await response.json();
+      const raw=rows[0]?.data?.boards?.[activeStoryboardId]?.jdb_assets;
+      cloud=raw?assetDebugSummaryFromData(JSON.parse(raw)):{mediaCount:0,error:'No jdb_assets in cloud row for '+activeStoryboardId};
+    }catch(e){cloud={mediaCount:0,error:e.message||'Cloud debug failed'};}
+  }
+  alert('Asset media debug\n\nCurrent memory:\n'+JSON.stringify(current,null,2)+'\n\nLocal saved:\n'+JSON.stringify(local,null,2)+'\n\nCloud shared:\n'+JSON.stringify(cloud,null,2));
+}
 function mediaCloudCounts(){
   const items=[...scenes.flatMap(scene=>scene.media||[]),...moodboard.filter(item=>item&&!item.kind),...scriptMediaItems(),...assetMediaItems()];
   return {
@@ -4808,7 +4843,8 @@ function renderAssetsView(board){
   const group=document.createElement('label');group.className='btn btn-sm';group.style.display='flex';group.style.alignItems='center';group.style.gap='6px';
   const groupCb=document.createElement('input');groupCb.type='checkbox';groupCb.checked=assetsGroupByTag;groupCb.onchange=()=>{assetsGroupByTag=groupCb.checked;render();};
   group.appendChild(groupCb);group.appendChild(document.createTextNode('Group by tag'));
-  controls.appendChild(tagFilter);controls.appendChild(group);intro.appendChild(controls);
+  const debug=document.createElement('button');debug.className='btn btn-sm';debug.textContent='Debug assets';debug.onclick=debugAssetsMedia;
+  controls.appendChild(tagFilter);controls.appendChild(group);controls.appendChild(debug);intro.appendChild(controls);
   wrap.appendChild(intro);
   assetsData.sections.forEach((section,index)=>{
     const sectionEl=document.createElement('section');sectionEl.className='asset-section';

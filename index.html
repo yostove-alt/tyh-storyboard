@@ -325,7 +325,7 @@ body.mood-closed .mood-rail{right:0;}
 .script-card-grid{display:grid;grid-template-columns:1fr;gap:12px;}
 .workspace-select{position:absolute;top:8px;left:8px;width:18px;height:18px;accent-color:var(--accent);z-index:2;}
 .script-card,.asset-card,.asset-thumb-card{position:relative;}
-.script-story.is-selected,.script-card.is-selected,.asset-card.is-selected,.asset-thumb-card.is-selected{border-color:var(--accent);box-shadow:0 0 0 2px rgba(23,74,54,.12),0 5px 18px rgba(38,48,32,.05);}
+.script-story.is-selected,.full-script-panel.is-selected,.script-card.is-selected,.asset-card.is-selected,.asset-thumb-card.is-selected{border-color:var(--accent);box-shadow:0 0 0 2px rgba(23,74,54,.12),0 5px 18px rgba(38,48,32,.05);}
 .script-card-wrap{display:block;}
 .script-card-wrap.with-select{display:grid;grid-template-columns:26px minmax(0,1fr);gap:8px;align-items:start;}
 .script-select{position:static;width:20px;height:20px;margin-top:8px;border:1px solid var(--border-strong);border-radius:5px;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,0,0,.08);}
@@ -1143,6 +1143,7 @@ let currentPlaybackStart=null;
 let songInfo=loadSongInfo();
 let selectedSceneIds=new Set();
 let selectedStoryPrompt=false;
+let selectedFullScript=false;
 let selectedStoryCardIds=new Set();
 let selectedScriptCardIds=new Set();
 let selectedAssetCardIds=new Set();
@@ -3104,24 +3105,24 @@ function visibleScriptCards(){
   return (timedScriptData.acts||[]).flatMap(act=>(act.cards||[]).map(card=>({act,card})));
 }
 function selectedWorkspaceCount(){
-  return (selectedStoryPrompt?1:0)+selectedSceneIds.size+selectedStoryCardIds.size+selectedScriptCardIds.size+selectedAssetCardIds.size;
+  return (selectedStoryPrompt?1:0)+(selectedFullScript?1:0)+selectedSceneIds.size+selectedStoryCardIds.size+selectedScriptCardIds.size+selectedAssetCardIds.size;
 }
 function selectVisibleWorkspaceItems(){
   if(boardView==='story'){selectedStoryPrompt=true;visibleStoryCards().forEach(({card})=>selectedStoryCardIds.add(card.id));}
-  else if(boardView==='script')visibleScriptCards().forEach(({card})=>selectedScriptCardIds.add(card.id));
+  else if(boardView==='script'){selectedFullScript=true;visibleScriptCards().forEach(({card})=>selectedScriptCardIds.add(card.id));}
   else if(boardView==='assets')(assetsData.sections||[]).forEach(section=>(section.cards||[]).forEach(card=>selectedAssetCardIds.add(card.id)));
   else visibleScenes().forEach(scene=>selectedSceneIds.add(scene.id));
   render();
 }
 function clearCurrentViewSelection(){
   if(boardView==='story'){selectedStoryPrompt=false;selectedStoryCardIds.clear();}
-  else if(boardView==='script')selectedScriptCardIds.clear();
+  else if(boardView==='script'){selectedFullScript=false;selectedScriptCardIds.clear();}
   else if(boardView==='assets')selectedAssetCardIds.clear();
   else selectedSceneIds.clear();
   render();
 }
 function clearWorkspaceSelection(){
-  selectedStoryPrompt=false;selectedSceneIds.clear();selectedStoryCardIds.clear();selectedScriptCardIds.clear();selectedAssetCardIds.clear();
+  selectedStoryPrompt=false;selectedFullScript=false;selectedSceneIds.clear();selectedStoryCardIds.clear();selectedScriptCardIds.clear();selectedAssetCardIds.clear();
 }
 function deleteSelectedScenes(){
   const count=selectedSceneIds.size;
@@ -3721,6 +3722,7 @@ function boardAgentInstructions(){
     'Write image prompts as complete production art direction: subject, setting, mood, composition, camera angle, lighting, style, and any visible text if needed.',
     'Use selected Story cards, Script beats, Assets, and scene cards as the user’s intended context. If selected assets include media URLs, treat them as visual references and describe their important details in the prompt or text you apply. The app will attach selected asset images as references for Nano Banana Pro image generation.',
     'For Story page changes, use set_story_page or update_story_card. For Script page changes, use set_script_page or update_script_card. The Story page is for structure/ideas; the Script page is for timing, dialogue, and visual notes.',
+    'If the user asks to make a full script, restructure the script, make as many acts/beats as needed, or use the whole script, use set_script_page with mode "replace" unless they ask to append. You may create any number of acts and beats needed for the story.',
     'For shot ideas, prefer add_shots or set_field with field "Key shots" and mode "append". Keep each shot short, visual, and filmable.',
     'For deleting/clearing, use clear_field, remove_text, delete_scene, or delete_scenes. Do not ask for confirmation in JSON; the app treats your action as the requested change.',
     'Prefer exact existing act/location/status/camera names from the board context.',
@@ -3863,11 +3865,12 @@ function workspaceAIContext(extra={}){
   return {
     storyboard:{name:currentStoryboard()?.name||'',scenes:scenes.map(sceneForAgent)},
     storyPage:{story:scriptData.story||'',cards:storyCards},
-    scriptPage:{cards:scriptCards},
+    scriptPage:{fullScript:fullScriptText(),cards:scriptCards},
     assets:{cards:assetCards},
     selected:{
       scenes:selectedScenes().map(sceneForAgent),
       story:selectedStoryPrompt?{story:scriptData.story||''}:null,
+      fullScript:selectedFullScript?{text:fullScriptText()}:null,
       storyCards:selectedStoryCards().map(({act,card})=>storyCardForAI(act,card)),
       scriptCards:selectedScriptCards().map(({act,card})=>scriptCardForAI(act,card)),
       assets:selectedAssets().map(({section,card})=>assetCardForAI(section,card))
@@ -4590,7 +4593,16 @@ function updateFullScriptPreview(){
   if(el)el.value=fullScriptText();
 }
 function renderFullScriptPanel(wrap){
+  const row=document.createElement('div');row.className='script-card-wrap'+(!viewOnlyMode?' with-select':'');
+  if(!viewOnlyMode){
+    const selectWrap=document.createElement('label');selectWrap.className='script-select';selectWrap.title='Select full script for Agent context';
+    const pick=document.createElement('input');pick.type='checkbox';pick.checked=selectedFullScript;
+    pick.onchange=e=>{e.stopPropagation();selectedFullScript=pick.checked;panel.classList.toggle('is-selected',selectedFullScript);renderSelectionBar();};
+    selectWrap.onclick=e=>e.stopPropagation();
+    selectWrap.appendChild(pick);row.appendChild(selectWrap);
+  }
   const panel=document.createElement('div');panel.className='full-script-panel';
+  panel.classList.toggle('is-selected',selectedFullScript);
   const toggle=document.createElement('button');toggle.type='button';toggle.className='full-script-toggle';
   toggle.innerHTML='<div>Full script</div><span>'+(fullScriptOpen?'Hide':'View')+'</span>';
   toggle.onclick=()=>{fullScriptOpen=!fullScriptOpen;render();};
@@ -4599,7 +4611,7 @@ function renderFullScriptPanel(wrap){
     const ta=document.createElement('textarea');ta.id='fullScriptText';ta.className='full-script-text';ta.readOnly=true;ta.value=fullScriptText();
     panel.appendChild(ta);
   }
-  wrap.appendChild(panel);
+  row.appendChild(panel);wrap.appendChild(row);
 }
 function scriptCardToScene(act,card,id){
   const shots=String(card.visual||'').split(/\n+/).map(line=>line.trim()).filter(Boolean);

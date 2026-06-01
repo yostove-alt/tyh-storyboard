@@ -3747,6 +3747,15 @@ function updateStoryCardAction(action){
   const id=String(action.id||action.cardId||'');
   let target=null;
   (scriptData.acts||[]).forEach(act=>(act.cards||[]).forEach(card=>{if(String(card.id)===id)target=card;}));
+  if(!target&&action.title){
+    const wanted=normChat(action.title);
+    (scriptData.acts||[]).forEach(act=>(act.cards||[]).forEach(card=>{if(!target&&normChat(card.title)===wanted)target=card;}));
+  }
+  if(!target&&selectedStoryCardIds.size){
+    const selected=selectedStoryCards().map(({card})=>card);
+    const idx=Math.max(0,(parseInt(action.index||action.number||action.position||'1',10)||1)-1);
+    target=selected[idx]||selected.find(card=>!String(card.text||'').trim())||selected[0]||null;
+  }
   if(!target)return 'I could not find that Story card.';
   const append=action.mode==='append';
   if(action.title!==undefined)target.title=append&&target.title?[target.title,action.title].join('\n'):String(action.title||'');
@@ -3759,6 +3768,15 @@ function updateScriptCardAction(action){
   const id=String(action.id||action.cardId||'');
   let target=null;
   (timedScriptData.acts||[]).forEach(act=>(act.cards||[]).forEach(card=>{if(String(card.id)===id)target=card;}));
+  if(!target&&action.title){
+    const wanted=normChat(action.title);
+    (timedScriptData.acts||[]).forEach(act=>(act.cards||[]).forEach(card=>{if(!target&&normChat(card.title)===wanted)target=card;}));
+  }
+  if(!target&&selectedScriptCardIds.size){
+    const selected=selectedScriptCards().map(({card})=>card);
+    const idx=Math.max(0,(parseInt(action.index||action.number||action.position||'1',10)||1)-1);
+    target=selected[idx]||selected.find(card=>!String(card.dialogue||card.visual||'').trim())||selected[0]||null;
+  }
   if(!target)return 'I could not find that Script beat.';
   const append=action.mode==='append';
   Object.entries(action.fields||{}).forEach(([key,value])=>{
@@ -3821,10 +3839,28 @@ function extractResponseText(data){
 function parseAgentPayload(text){
   const raw=String(text||'').trim();
   if(!raw)return {message:'No response came back.',actions:[]};
-  try{return JSON.parse(raw);}
+  const normalizePayload=payload=>{
+    if(typeof payload==='string')return parseAgentPayload(payload);
+    if(Array.isArray(payload))return {message:'Done.',actions:payload};
+    if(!payload||typeof payload!=='object')return {message:String(payload||''),actions:[]};
+    if((!Array.isArray(payload.actions)||!payload.actions.length)&&typeof payload.message==='string'){
+      const nested=payload.message.trim();
+      if(nested.startsWith('{')||nested.startsWith('[')){
+        const parsed=parseAgentPayload(nested);
+        if(parsed.actions?.length)return parsed;
+      }
+    }
+    if(typeof payload.actions==='string'){
+      const parsed=parseAgentPayload(payload.actions);
+      payload.actions=Array.isArray(parsed)?parsed:(parsed.actions||[]);
+    }
+    if(!Array.isArray(payload.actions))payload.actions=[];
+    return payload;
+  };
+  try{return normalizePayload(JSON.parse(raw));}
   catch(e){
     const match=raw.match(/\{[\s\S]*\}/);
-    if(match){try{return JSON.parse(match[0]);}catch(err){}}
+    if(match){try{return normalizePayload(JSON.parse(match[0]));}catch(err){}}
   }
   return {message:raw,actions:[]};
 }

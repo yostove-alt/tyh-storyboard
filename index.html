@@ -129,6 +129,16 @@ body.panel-closed .panel-rail{left:0;}
 .mention-thumb img,.mention-thumb video{width:100%;height:100%;object-fit:contain;background:#050706;display:block;}
 .mention-title{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .mention-meta{font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;color:var(--faint);margin-top:2px;}
+.agent-ref-tray{border:1px dashed var(--border-strong);border-radius:var(--r);background:var(--surface-soft);padding:8px;display:flex;flex-direction:column;gap:7px;}
+.agent-ref-tray.dragover{border-color:var(--accent);background:var(--accent-l);}
+.agent-ref-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.agent-ref-title{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
+.agent-ref-actions{display:flex;gap:5px;align-items:center;}
+.agent-ref-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:6px;}
+.agent-ref-card{position:relative;height:48px;border:1px solid var(--border);border-radius:7px;background:#050706;overflow:hidden;}
+.agent-ref-card img{width:100%;height:100%;object-fit:contain;display:block;background:#050706;}
+.agent-ref-card button{position:absolute;top:3px;right:3px;width:18px;height:18px;border:1px solid rgba(255,255,255,.45);border-radius:999px;background:rgba(5,7,6,.72);color:#fff;font-size:12px;line-height:1;cursor:pointer;}
+.agent-ref-empty{font-size:11px;color:var(--muted);line-height:1.35;}
 .lyrics-panel{display:flex;flex-direction:column;gap:10px;}
 .song-card{border:1px solid var(--border);border-radius:var(--r);background:var(--surface-soft);padding:10px;display:flex;flex-direction:column;gap:8px;}
 .song-row{display:flex;gap:7px;align-items:center;}
@@ -1124,6 +1134,7 @@ let selectedSceneIds=new Set();
 let selectedStoryCardIds=new Set();
 let selectedScriptCardIds=new Set();
 let selectedAssetCardIds=new Set();
+let agentPromptReferences=[];
 let chatMessages=[{role:'assistant',text:'Board ready.'}];
 let claudeMessages=[{role:'assistant',text:'Claude board chat ready.'}];
 let activeAgentProvider=loadAgentProvider();
@@ -2765,8 +2776,61 @@ function renderAIChat(b,provider){
   attachMentionPicker(input,mentionPicker);
   input.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat(input.value,provider);}};
   const send=document.createElement('button');send.className='btn btn-primary chat-send';send.textContent='Send';send.onclick=()=>sendChat(input.value,provider);
-  box.appendChild(input);box.appendChild(mentionPicker);box.appendChild(send);w.appendChild(cfg);w.appendChild(log);w.appendChild(box);b.appendChild(w);
+  box.appendChild(input);box.appendChild(mentionPicker);box.appendChild(send);w.appendChild(cfg);w.appendChild(renderAgentReferenceTray());w.appendChild(log);w.appendChild(box);b.appendChild(w);
   requestAnimationFrame(()=>{log.scrollTop=log.scrollHeight;input.focus();});
+}
+
+function renderAgentReferenceTray(){
+  const tray=document.createElement('div');tray.className='agent-ref-tray';
+  const head=document.createElement('div');head.className='agent-ref-head';
+  const title=document.createElement('div');title.className='agent-ref-title';title.textContent='Prompt reference images';
+  const actions=document.createElement('div');actions.className='agent-ref-actions';
+  const input=document.createElement('input');input.type='file';input.accept='image/*,.heic,.heif';input.multiple=true;input.style.display='none';
+  input.onchange=()=>addAgentPromptReferenceFiles(Array.from(input.files||[]));
+  const add=document.createElement('button');add.className='btn btn-sm';add.type='button';add.textContent='+ Images';add.onclick=()=>input.click();
+  const clear=document.createElement('button');clear.className='btn btn-sm';clear.type='button';clear.textContent='Clear';clear.onclick=()=>{agentPromptReferences.forEach(ref=>{if(ref.objectUrl)URL.revokeObjectURL(ref.objectUrl);});agentPromptReferences=[];renderPanel();};
+  actions.appendChild(add);if(agentPromptReferences.length)actions.appendChild(clear);
+  head.appendChild(title);head.appendChild(actions);tray.appendChild(head);tray.appendChild(input);
+  if(agentPromptReferences.length){
+    const grid=document.createElement('div');grid.className='agent-ref-grid';
+    agentPromptReferences.forEach((ref,i)=>{
+      const card=document.createElement('div');card.className='agent-ref-card';card.title=ref.name||'Prompt reference';
+      const img=document.createElement('img');img.src=ref.url;img.alt=ref.name||'Prompt reference';card.appendChild(img);
+      const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.title='Remove reference';
+      remove.onclick=()=>{const [gone]=agentPromptReferences.splice(i,1);if(gone?.objectUrl)URL.revokeObjectURL(gone.objectUrl);renderPanel();};
+      card.appendChild(remove);grid.appendChild(card);
+    });
+    tray.appendChild(grid);
+  }else{
+    const empty=document.createElement('div');empty.className='agent-ref-empty';empty.textContent='Upload or drop image references here. They will be attached to the next image-generation request.';
+    tray.appendChild(empty);
+  }
+  ['dragenter','dragover'].forEach(type=>tray.addEventListener(type,e=>{e.preventDefault();tray.classList.add('dragover');}));
+  ['dragleave','drop'].forEach(type=>tray.addEventListener(type,e=>{e.preventDefault();tray.classList.remove('dragover');}));
+  tray.addEventListener('drop',e=>addAgentPromptReferenceFiles(Array.from(e.dataTransfer?.files||[])));
+  return tray;
+}
+
+async function addAgentPromptReferenceFiles(files){
+  const images=files.filter(file=>isMediaUploadFile(file)&&mediaKindForFile(file)!=='video');
+  if(!images.length){toast('Add image files only for prompt references');return;}
+  for(const original of images){
+    let file=original;
+    if(isHeicFile(file)){
+      try{
+        toast('Converting HEIC to JPEG...',2400);
+        file=await convertHeicToJpeg(file);
+      }catch(e){
+        toast('HEIC conversion failed: '+((e&&e.message)||'unknown error'),8000);
+        continue;
+      }
+    }
+    const url=URL.createObjectURL(file);
+    agentPromptReferences.push({name:file.name||'reference image',url,objectUrl:url,type:'image',file});
+  }
+  agentPromptReferences=agentPromptReferences.slice(-8);
+  renderPanel();
+  toast('Added '+plural(images.length,'prompt reference image'));
 }
 
 function renderCompose(b){
@@ -3303,6 +3367,12 @@ function selectedAssetReferenceMedia(){
     .map(item=>({section:section.name||'',asset:card.title||'',name:item.name||'',url:item.url||storagePublicUrl(item.storagePath),storagePath:item.storagePath||'',type:item.type||'image'}))
   ).slice(0,4);
 }
+function agentPromptReferenceMedia(){
+  return agentPromptReferences
+    .filter(ref=>ref&&ref.url)
+    .map(ref=>({section:'Agent prompt upload',asset:'',name:ref.name||'Prompt reference',url:ref.url,type:'image',file:ref.file||null}))
+    .slice(0,8);
+}
 function mentionedReferenceMedia(text){
   const refs=[];
   const addRef=(item,meta={})=>{
@@ -3349,9 +3419,12 @@ async function geminiReferenceParts(refs){
   const parts=[];
   for(const ref of refs){
     try{
-      const response=await fetch(ref.url);
-      if(!response.ok)continue;
-      const blob=await response.blob();
+      let blob=ref.file instanceof Blob?ref.file:null;
+      if(!blob){
+        const response=await fetch(ref.url);
+        if(!response.ok)continue;
+        blob=await response.blob();
+      }
       parts.push({inline_data:{mime_type:blob.type||'image/png',data:await blobToBase64(blob)}});
     }catch(e){}
   }
@@ -3432,7 +3505,12 @@ async function chatGenerateImages(action){
   const count=Math.max(1,Math.min(4,parseInt(action.count||action.n||1,10)||1));
   const size=normalizeImageSize(action.size||'1536x1024');
   const baseName=action.name||action.title||'ai-storyboard-image';
-  const refs=[...mentionedReferenceMedia(prompt),...selectedAssetReferenceMedia()];
+  const refs=[];
+  [...mentionedReferenceMedia(prompt),...selectedAssetReferenceMedia(),...agentPromptReferenceMedia()].forEach(ref=>{
+    const key=ref.storagePath||ref.url||ref.name;
+    if(key&&!refs.some(existing=>(existing.storagePath||existing.url||existing.name)===key))refs.push(ref);
+  });
+  refs.splice(8);
   const generated=[];
   for(let i=0;i<count;i++){
     generated.push(await mediaItemFromGeneratedImage(prompt,{name:cleanGeneratedImageName(baseName,i+1),size,refs}));
@@ -3441,7 +3519,7 @@ async function chatGenerateImages(action){
     scene.media=[...(scene.media||[]),...generated.map(item=>({...item}))];
   });
   save();render();
-  return 'Generated '+plural(generated.length,'image')+' and attached '+(generated.length===1?'it':'them')+' to '+plural(targets.length,'card')+(refs.length?' using '+plural(refs.length,'selected asset reference'):'')+'.';
+  return 'Generated '+plural(generated.length,'image')+' and attached '+(generated.length===1?'it':'them')+' to '+plural(targets.length,'card')+(refs.length?' using '+plural(refs.length,'reference image'):'')+'.';
 }
 function chatDeleteScenes(scopeRaw){
   const targets=scenesForScope(scopeRaw||'selected');

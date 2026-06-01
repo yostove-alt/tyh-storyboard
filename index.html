@@ -3032,6 +3032,82 @@ function chatAddShots(scopeRaw,shots){
   if(!vals.length)return 'No shot ideas were provided.';
   return chatSetField('shots',scopeRaw||'all',vals,'append');
 }
+function cleanGeneratedImageName(raw,idx=1){
+  const base=String(raw||'ai-storyboard-image')
+    .replace(/\.[a-z0-9]+$/i,'')
+    .replace(/[^a-z0-9._-]+/gi,'-')
+    .replace(/^-+|-+$/g,'')
+    .slice(0,70)||'ai-storyboard-image';
+  return base+(idx>1?'-'+idx:'')+'.png';
+}
+function normalizeImageSize(size){
+  const value=String(size||'').trim();
+  return ['1024x1024','1536x1024','1024x1536','auto'].includes(value)?value:'1536x1024';
+}
+async function fileFromGeneratedImageItem(item,name){
+  if(item?.b64_json)return dataUrlToFile('data:image/png;base64,'+item.b64_json,name);
+  if(item?.url){
+    const blob=await fetch(item.url).then(r=>r.ok?r.blob():null).catch(()=>null);
+    if(blob)return new File([blob],name,{type:blob.type||'image/png'});
+  }
+  return null;
+}
+async function generateOpenAIImageFile(prompt,{name='ai-storyboard-image.png',size='1536x1024'}={}){
+  const key=getOpenAIKey();
+  if(!key)throw new Error('Add an OpenAI API key in the Agent tab to generate images.');
+  const response=await fetch('https://api.openai.com/v1/images/generations',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+    body:JSON.stringify({
+      model:'gpt-image-1',
+      prompt,
+      size:normalizeImageSize(size),
+      n:1
+    })
+  });
+  if(!response.ok){
+    let detail='';
+    try{const err=await response.json();detail=err.error?.message||err.message||'';}catch(e){}
+    throw new Error('OpenAI image returned '+response.status+(detail?': '+detail:''));
+  }
+  const data=await response.json();
+  const file=await fileFromGeneratedImageItem(data.data?.[0]||{},name);
+  if(!file)throw new Error('OpenAI did not return an image file.');
+  return file;
+}
+async function mediaItemFromGeneratedImage(prompt,{name='ai-storyboard-image.png',size='1536x1024'}={}){
+  const file=await generateOpenAIImageFile(prompt,{name,size});
+  const storedId=newMediaId();
+  await setStoredMedia(storedId,{blob:file,type:file.type||'image/png',name:file.name,size:file.size,updatedAt:Date.now()});
+  const media={url:URL.createObjectURL(file),type:'image',name:file.name,storedId,size:file.size};
+  if(cloudConfigured()&&getCloudSession()){
+    const uploaded=await uploadFileToStorage(file,{mediaId:storedId});
+    if(uploaded){
+      media.url=uploaded.url;
+      media.storagePath=uploaded.storagePath;
+      media.storedId=uploaded.mediaId;
+    }
+  }
+  return media;
+}
+async function chatGenerateImages(action){
+  const prompt=cleanChatValue(action.prompt||action.value||action.description||'');
+  if(!prompt)return 'No image prompt was provided.';
+  const targets=scenesForScope(action.scope||action.target||'selected');
+  if(!targets.length)return 'I could not find cards for that image scope.';
+  const count=Math.max(1,Math.min(4,parseInt(action.count||action.n||1,10)||1));
+  const size=normalizeImageSize(action.size||'1536x1024');
+  const baseName=action.name||action.title||'ai-storyboard-image';
+  const generated=[];
+  for(let i=0;i<count;i++){
+    generated.push(await mediaItemFromGeneratedImage(prompt,{name:cleanGeneratedImageName(baseName,i+1),size}));
+  }
+  targets.forEach(scene=>{
+    scene.media=[...(scene.media||[]),...generated.map(item=>({...item}))];
+  });
+  save();render();
+  return 'Generated '+plural(generated.length,'image')+' and attached '+(generated.length===1?'it':'them')+' to '+plural(targets.length,'card')+'.';
+}
 function chatDeleteScenes(scopeRaw){
   const targets=scenesForScope(scopeRaw||'selected');
   if(!targets.length)return 'I could not find cards to delete.';
@@ -3162,6 +3238,7 @@ function boardAgentInstructions(){
     '{"type":"copy_field","field":"field label","from":"scene number/title","to":"all|visible|selected|Act name|Location name|Status name|Camera name"}',
     '{"type":"add_scene","act":"Act name","title":"Title","fields":{"location":"...","status":"...","shots":["..."],"props":"..."}}',
     '{"type":"bulk_create_scenes","act":"Act name","cards":[{"title":"Verse title","time":"0:00 – 0:08","lyrics":"lyrics text","fields":{"note":"optional","shots":["optional shot"]}}],"replace":false}',
+    '{"type":"generate_image","scope":"selected|visible|all|Act name|scene number/title","prompt":"detailed visual prompt","count":1,"size":"1536x1024|1024x1024|1024x1536","name":"optional file name"}',
     '{"type":"delete_scenes","scope":"selected|visible|Act name|scene number/title"}',
     '{"type":"move_scenes","scope":"selected|visible|Act name|scene number/title","act":"Act name optional","after":"scene number/title optional","before":"scene number/title optional"}',
     '{"type":"rename_option","optionType":"act|location|status|camera","from":"old","to":"new"}',
@@ -3169,6 +3246,8 @@ function boardAgentInstructions(){
     'Fields include act, num, title, time, location, status, camera, lyrics, shots, note, extras, wardrobe, props, and custom field labels.',
     'When the user pastes song sections with verse labels and timestamps, create one card per verse/timed block, filling title, time, and lyrics.',
     'When the user asks for creative ideas and says to add/apply/fill them in, generate concrete production-ready text and apply it with set_field, set_fields, or add_shots.',
+    'When the user asks you to make, generate, create, attach, or add an image, concept image, reference image, storyboard frame, character image, prop image, or location image, use generate_image. Use scope "selected" for selected cards unless the user names a different target.',
+    'Write image prompts as complete production art direction: subject, setting, mood, composition, camera angle, lighting, style, and any visible text if needed.',
     'For shot ideas, prefer add_shots or set_field with field "Key shots" and mode "append". Keep each shot short, visual, and filmable.',
     'For deleting/clearing, use clear_field, remove_text, delete_scene, or delete_scenes. Do not ask for confirmation in JSON; the app treats your action as the requested change.',
     'Prefer exact existing act/location/status/camera names from the board context.',
@@ -3208,49 +3287,55 @@ function parseAgentPayload(text){
   }
   return {message:raw,actions:[]};
 }
-function applyAgentActions(actions){
+async function applyAgentActions(actions){
   if(!Array.isArray(actions)||!actions.length)return [];
   const results=[];
-  actions.forEach(action=>{
-    if(!action||!action.type)return;
-    const type=normChat(action.type).replace(/\s+/g,'_');
-    if(type==='set_field'){
-      results.push(chatSetField(action.field,action.scope||action.target||'all',action.value,action.mode==='append'?'append':'set'));
-    }else if(type==='set_fields'){
-      results.push(chatSetFields(action.scope||action.target||'all',action.fields||{},action.mode==='append'?'append':'set'));
-    }else if(type==='add_shots'){
-      results.push(chatAddShots(action.scope||action.target||'all',action.shots||action.value||[]));
-    }else if(type==='clear_field'){
-      results.push(chatClearField(action.field,action.scope||action.target||'all'));
-    }else if(type==='remove_text'){
-      results.push(chatRemoveText(action.text||action.value||'',{fieldRaw:action.field||'all',scopeRaw:action.scope||action.target||'all'}));
-    }else if(type==='copy_field'){
-      results.push(chatCopyField(action.field,action.from||action.source,action.to||action.scope||action.target||'all'));
-    }else if(type==='add_scene'){
-      const scene=createScene(action.act||activeFilters.act||acts[0],{title:action.title||'Untitled scene'});
-      Object.entries(action.fields||{}).forEach(([fieldRaw,value])=>{
-        const field=resolveChatField(fieldRaw,true);
-        if(field)setSceneField(scene,field,value);
-      });
-      syncOptionsFromScenes();save();render();
-      results.push('Added Scene '+scene.num+' to '+scene.act+'.');
-    }else if(type==='bulk_create_scenes'){
-      results.push(bulkCreateScenes(action.cards||action.scenes||[],{act:action.act||activeFilters.act||acts[0],replace:!!action.replace}));
-    }else if(type==='delete_scenes'){
-      results.push(chatDeleteScenes(action.scope||action.target||'selected'));
-    }else if(type==='move_scenes'){
-      results.push(chatMoveScenes(action.scope||action.target||'selected',{act:action.act,after:action.after,before:action.before}));
-    }else if(type==='rename_option'){
-      const optionType=String(action.optionType||action.option||'').toLowerCase();
-      if(validOptionType(optionType)&&action.from&&action.to){renameOption(optionType,action.from,action.to);results.push('Renamed '+optionType+'.');}
-    }else if(type==='add_option'){
-      const optionType=String(action.optionType||action.option||'').toLowerCase();
-      if(validOptionType(optionType)&&addOption(optionType,action.value)){syncOptionsFromScenes();render();results.push('Added '+optionLabel(optionType)+'.');}
-    }else if(type==='delete_scene'){
-      const scene=findSceneByToken(action.scene||action.target||'');
-      if(scene){scenes=scenes.filter(s=>s.id!==scene.id);save();render();results.push('Deleted Scene '+scene.num+'.');}
+  for(const action of actions){
+    if(!action||!action.type)continue;
+    try{
+      const type=normChat(action.type).replace(/\s+/g,'_');
+      if(type==='set_field'){
+        results.push(chatSetField(action.field,action.scope||action.target||'all',action.value,action.mode==='append'?'append':'set'));
+      }else if(type==='set_fields'){
+        results.push(chatSetFields(action.scope||action.target||'all',action.fields||{},action.mode==='append'?'append':'set'));
+      }else if(type==='add_shots'){
+        results.push(chatAddShots(action.scope||action.target||'all',action.shots||action.value||[]));
+      }else if(type==='clear_field'){
+        results.push(chatClearField(action.field,action.scope||action.target||'all'));
+      }else if(type==='remove_text'){
+        results.push(chatRemoveText(action.text||action.value||'',{fieldRaw:action.field||'all',scopeRaw:action.scope||action.target||'all'}));
+      }else if(type==='copy_field'){
+        results.push(chatCopyField(action.field,action.from||action.source,action.to||action.scope||action.target||'all'));
+      }else if(type==='add_scene'){
+        const scene=createScene(action.act||activeFilters.act||acts[0],{title:action.title||'Untitled scene'});
+        Object.entries(action.fields||{}).forEach(([fieldRaw,value])=>{
+          const field=resolveChatField(fieldRaw,true);
+          if(field)setSceneField(scene,field,value);
+        });
+        syncOptionsFromScenes();save();render();
+        results.push('Added Scene '+scene.num+' to '+scene.act+'.');
+      }else if(type==='bulk_create_scenes'){
+        results.push(bulkCreateScenes(action.cards||action.scenes||[],{act:action.act||activeFilters.act||acts[0],replace:!!action.replace}));
+      }else if(type==='generate_image'||type==='generate_images'||type==='create_image'||type==='create_images'||type==='add_image'){
+        results.push(await chatGenerateImages(action));
+      }else if(type==='delete_scenes'){
+        results.push(chatDeleteScenes(action.scope||action.target||'selected'));
+      }else if(type==='move_scenes'){
+        results.push(chatMoveScenes(action.scope||action.target||'selected',{act:action.act,after:action.after,before:action.before}));
+      }else if(type==='rename_option'){
+        const optionType=String(action.optionType||action.option||'').toLowerCase();
+        if(validOptionType(optionType)&&action.from&&action.to){renameOption(optionType,action.from,action.to);results.push('Renamed '+optionType+'.');}
+      }else if(type==='add_option'){
+        const optionType=String(action.optionType||action.option||'').toLowerCase();
+        if(validOptionType(optionType)&&addOption(optionType,action.value)){syncOptionsFromScenes();render();results.push('Added '+optionLabel(optionType)+'.');}
+      }else if(type==='delete_scene'){
+        const scene=findSceneByToken(action.scene||action.target||'');
+        if(scene){scenes=scenes.filter(s=>s.id!==scene.id);save();render();results.push('Deleted Scene '+scene.num+'.');}
+      }
+    }catch(e){
+      results.push(e.message||'That action could not be completed.');
     }
-  });
+  }
   return results.filter(Boolean);
 }
 async function runOpenAIAgent(text,key){
@@ -3273,7 +3358,7 @@ async function runOpenAIAgent(text,key){
     }
     const data=await response.json();
     const payload=parseAgentPayload(extractResponseText(data));
-    const results=applyAgentActions(payload.actions||[]);
+    const results=await applyAgentActions(payload.actions||[]);
     const msg=payload.message||'Done.';
     return results.length?msg+'\n\nApplied: '+results.join(' '):msg;
   }catch(e){
@@ -3299,7 +3384,7 @@ async function runClaudeAgent(text,key){
     }
     const data=await response.json();
     const payload=parseAgentPayload(extractClaudeText(data));
-    const results=applyAgentActions(payload.actions||[]);
+    const results=await applyAgentActions(payload.actions||[]);
     const msg=payload.message||'Done.';
     return results.length?msg+'\n\nApplied: '+results.join(' '):msg;
   }catch(e){

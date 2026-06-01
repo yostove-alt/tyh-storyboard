@@ -752,7 +752,7 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
   <div class="sort-group view-group">
     <button class="sort-btn" id="viewStoryBtn" onclick="setBoardView('story')">Story</button>
     <button class="sort-btn" id="viewScriptBtn" onclick="setBoardView('script')">Script</button>
-    <button class="sort-btn active" id="viewCardsBtn" onclick="setBoardView('cards')">Cards</button>
+    <button class="sort-btn active" id="viewCardsBtn" onclick="setBoardView('cards')">Storyboard</button>
     <button class="sort-btn" id="viewAssetsBtn" onclick="setBoardView('assets')">Assets</button>
     <button class="sort-btn" id="viewSlideshowBtn" onclick="setBoardView('slideshow')">Animatic</button>
   </div>
@@ -853,7 +853,7 @@ const DEFAULT_CAMS=['Cam A — Moti','Cam B — Elmelech','Both','BTS'];
 const DEFAULT_BOARD_VIEWS=[
   {key:'story',label:'Story',visible:true},
   {key:'script',label:'Script',visible:true},
-  {key:'cards',label:'Cards',visible:true},
+  {key:'cards',label:'Storyboard',visible:true},
   {key:'assets',label:'Assets',visible:true},
   {key:'slideshow',label:'Animatic',visible:true}
 ];
@@ -1737,6 +1737,12 @@ function syncOptionsFromScenes(){
   locations=uniqueList([...locations,...scenes.map(s=>s.location)]);
   statuses=uniqueList([...statuses,...scenes.map(s=>s.status)]);
   cameras=uniqueList([...cameras,...scenes.flatMap(s=>s.camera||[])]);
+  saveOptionLists();
+}
+function pruneEmptyStoryboardActs(){
+  const used=new Set(scenes.map(scene=>scene.act).filter(Boolean));
+  if(!used.size)return;
+  acts=acts.filter(act=>used.has(act));
   saveOptionLists();
 }
 function colorForString(value){
@@ -2825,10 +2831,10 @@ function agentSuggestionList(){
   const missingImages=scenes.some(scene=>!(scene.media||[]).length);
   const suggestions=[];
   if(hasStory)suggestions.push({label:'Generate Script based on the Story page',prompt:'Generate the script page based on the story. Intelligently rework the story into acts, beats, dialogue, timing, and visual notes.'});
-  if(hasScript)suggestions.push({label:'Generate Cards based on the Script page',prompt:'Generate the proper Cards view based on the script. Decide how many acts and cards are needed, allocate cards to acts, fill timing, lyrics/dialogue, key shots, and notes. Do not make images.'});
-  if(hasCards)suggestions.push({label:'Revise Script based on current Cards',prompt:'Revise the Script page based on the current Cards view so the script and cards are consistent.'});
+  if(hasScript)suggestions.push({label:'Generate Storyboard based on the Script page',prompt:'Generate the proper Storyboard view based on the script. Decide how many acts and cards are needed, allocate cards to acts, fill timing, lyrics/dialogue, key shots, and notes. Do not make images.'});
+  if(hasCards)suggestions.push({label:'Revise Script based on current Storyboard',prompt:'Revise the Script page based on the current Storyboard view so the script and cards are consistent.'});
   if(hasScript)suggestions.push({label:'Revise Story based on current Script',prompt:'Revise the Story page based on the current Script page so the story and script are consistent.'});
-  if(hasCards&&missingImages)suggestions.push({label:'Add tailored images to Cards missing images',prompt:'Add images to all cards that do not have images yet. Make a unique image for each card based on its details.'});
+  if(hasCards&&missingImages)suggestions.push({label:'Add tailored images to Storyboard cards missing images',prompt:'Add images to all cards that do not have images yet. Make a unique image for each card based on its details.'});
   if(!hasStory)suggestions.push({label:'Create Story beats from an idea',prompt:'Create story beats and descriptions for the Story page based on this idea: '});
   return suggestions.slice(0,5);
 }
@@ -3401,7 +3407,7 @@ function bulkCreateScenes(cards,{act=null,replace=false}={}){
   if(!Array.isArray(cards)||!cards.length)return 'No cards were provided.';
   const actName=act||activeFilters.act||acts[0]||'New act';
   addOption('act',actName);
-  if(replace)scenes=scenes.filter(scene=>scene.act!==actName);
+  if(replace)scenes=act?scenes.filter(scene=>scene.act!==actName):[];
   let nextId=Math.max(...scenes.map(s=>s.id),0)+1;
   const newScenes=cards.map(card=>{
     const fields=card.fields||{};
@@ -3414,7 +3420,7 @@ function bulkCreateScenes(cards,{act=null,replace=false}={}){
   const lastIndex=[...scenes].map((s,i)=>s.act===actName?i:-1).filter(i=>i>=0).pop();
   if(lastIndex===undefined)scenes.push(...newScenes);
   else scenes.splice(lastIndex+1,0,...newScenes);
-  syncOptionsFromScenes();save();render();
+  syncOptionsFromScenes();if(replace)pruneEmptyStoryboardActs();save();render();
   return 'Created '+plural(newScenes.length,'card')+' in '+actName+'.';
 }
 function nextSceneId(){return Math.max(...scenes.map(s=>s.id),0)+1;}
@@ -3908,8 +3914,8 @@ function boardAgentInstructions(){
     'For Story page changes, use set_story_page or update_story_card. For Script page changes, use set_script_page or update_script_card. The Story page is for structure/ideas; the Script page is for timing, dialogue, and visual notes.',
     'If the user asks to make a full script, restructure the script, make as many acts/beats as needed, or use the whole script, use set_script_page with mode "replace" unless they ask to append. You may create any number of acts and beats needed for the story.',
     'If the user asks to make the Script page from the Story page, use set_script_page and write real timed script beats from the story context.',
-    'If the user asks to make Cards from the Script page, use make_cards_from_script only for exact/direct copying. For intelligent storyboard generation, use bulk_create_scenes with scene card details generated from the script.',
-    'When creating Cards from Script, decide the act structure too. Create the number of acts/sections that best fits the project and assign each card an "act" value. Do not preserve existing script act names unless they are actually the best structure.',
+    'If the user asks to make the Storyboard/Cards from the Script page, use make_cards_from_script only for exact/direct copying. For intelligent storyboard generation, use bulk_create_scenes with scene card details generated from the script.',
+    'When creating Storyboard cards from Script, decide the act structure too. Create the number of acts/sections that best fits the project and assign each card an "act" value. Do not preserve existing script act names unless they are actually the best structure.',
     'If the user asks to make the whole project, whole thing, everything, or build from an idea, use build_project with story, storyActs, scriptActs, and cards. Replace existing structure unless the user asks to append.',
     'For shot ideas, prefer add_shots or set_field with field "Key shots" and mode "append". Keep each shot short, visual, and filmable.',
     'For deleting/clearing, use clear_field, remove_text, delete_scene, or delete_scenes. Do not ask for confirmation in JSON; the app treats your action as the requested change.',
@@ -3962,9 +3968,9 @@ function workflowInstructions(kind){
   ].join('\n');
   if(kind==='cards_to_script')return [
     common,
-    'You are a script editor. Revise or generate the Script page based on the current Cards view.',
+    'You are a script editor. Revise or generate the Script page based on the current Storyboard view.',
     'Use set_script_page with mode "replace". Group cards into coherent script acts/beats, preserving important timing, dialogue, visual notes, and story progression.',
-    'Make the script consistent with the cards rather than copying each card one-for-one.'
+    'Make the script consistent with the Storyboard cards rather than copying each card one-for-one.'
   ].join('\n');
   if(kind==='script_to_story')return [
     common,
@@ -4005,8 +4011,8 @@ function scriptToCardsInstructions(){
   return [
     'You are a storyboard director inside Judoboards.',
     'Return only valid JSON with this shape: {"message":"short human response","actions":[{"type":"bulk_create_scenes","replace":true,"cards":[...]}]}',
-    'Create storyboard Cards from the Script page intelligently, not one-for-one.',
-    'Decide the act/section structure for the Cards view. Use 1, 2, 3, or more acts as needed based on the story flow, timing, tone shifts, sequences, scenes, or production logic.',
+    'Create Storyboard cards from the Script page intelligently, not one-for-one.',
+    'Decide the act/section structure for the Storyboard view. Use 1, 2, 3, or more acts as needed based on the story flow, timing, tone shifts, sequences, scenes, or production logic.',
     'Every generated card must include an "act" field naming the act/section it belongs to. Group cards into coherent acts; do not blindly copy the Script page act names unless they are the best fit.',
     'Choose the right number of cards for the script: split dense or visually changing beats into multiple cards, combine tiny continuation moments, and avoid both over-fragmenting and under-covering.',
     'Use the script timing to assign time ranges. If one script beat needs multiple cards, divide its timing naturally. If timing is missing, make reasonable sequential ranges.',
@@ -4032,7 +4038,7 @@ function scriptToCardsContext(userText){
 }
 async function runScriptToCardsAgent(text,key,isClaude=false){
   try{
-    const input='Return valid json only. Create an intelligent storyboard Cards view from this Script context:\n'+JSON.stringify(scriptToCardsContext(text));
+    const input='Return valid json only. Create an intelligent Storyboard view from this Script context:\n'+JSON.stringify(scriptToCardsContext(text));
     if(isClaude){
       const response=await fetch('https://api.anthropic.com/v1/messages',{
         method:'POST',
@@ -4050,7 +4056,7 @@ async function runScriptToCardsAgent(text,key,isClaude=false){
     if(!response.ok){let detail='';try{const err=await response.json();detail=err.error?.message||'';}catch(e){}return 'OpenAI returned '+response.status+(detail?': '+detail:'')+'.';}
     return extractResponseText(await response.json());
   }catch(e){
-    return 'I could not reach the AI to design Cards from the Script.';
+    return 'I could not reach the AI to design the Storyboard from the Script.';
   }
 }
 function normalizeAgentStoryActs(actsRaw){
@@ -4105,13 +4111,13 @@ function applyScriptPageAction(action){
 }
 function makeCardsFromScriptAction(action={}){
   const items=scriptCardsFlat().filter(({card})=>card.title||card.timing||card.dialogue||card.visual||card.purpose);
-  if(!items.length)return 'No Script beats were available to turn into Cards.';
+  if(!items.length)return 'No Script beats were available to turn into the Storyboard.';
   const replace=action.replace!==false;
   let nextId=replace?1:Math.max(...scenes.map(scene=>scene.id),0)+1;
   const generated=items.map(({act,card})=>scriptCardToScene(act,card,nextId++));
   scenes=replace?generated:[...scenes,...generated];
-  syncOptionsFromScenes();save();setBoardView('cards');
-  return (replace?'Replaced Cards with ':'Added ')+plural(generated.length,'card')+' from the Script page.';
+  syncOptionsFromScenes();if(replace)pruneEmptyStoryboardActs();save();setBoardView('cards');
+  return (replace?'Replaced Storyboard with ':'Added ')+plural(generated.length,'card')+' from the Script page.';
 }
 function applyBuildProjectAction(action){
   const replace=action.replace!==false;
@@ -4131,6 +4137,7 @@ function applyBuildProjectAction(action){
   if(sceneCards.length){
     if(replace)scenes=[];
     results.push(bulkCreateScenes(sceneCards,{act:action.act||acts[0]||'Act 1',replace:false}));
+    if(replace)pruneEmptyStoryboardActs();
   }
   if(!results.length)return 'No project structure was provided.';
   syncOptionsFromScenes();save();render();
@@ -4980,11 +4987,11 @@ function generateCardsFromScript(){
   if(viewOnlyMode)return;
   const items=scriptCardsFlat().filter(({card})=>card.title||card.timing||card.dialogue||card.visual||card.purpose);
   if(!items.length){toast('No script blocks to generate');return;}
-  const replace=confirm('Replace existing Cards with cards generated from Script?\n\nOK = replace existing cards\nCancel = append to existing cards');
+  const replace=confirm('Replace existing Storyboard with cards generated from Script?\n\nOK = replace existing Storyboard\nCancel = append to existing Storyboard');
   let nextId=replace?1:Math.max(...scenes.map(scene=>scene.id),0)+1;
   const generated=items.map(({act,card})=>scriptCardToScene(act,card,nextId++));
   scenes=replace?generated:[...scenes,...generated];
-  syncOptionsFromScenes();save();setBoardView('cards');toast('Generated '+generated.length+' card'+(generated.length!==1?'s':'')+' from Script');
+  syncOptionsFromScenes();if(replace)pruneEmptyStoryboardActs();save();setBoardView('cards');toast('Generated '+generated.length+' Storyboard card'+(generated.length!==1?'s':'')+' from Script');
 }
 function generateScriptFromStory(){
   if(viewOnlyMode)return;
@@ -5796,7 +5803,7 @@ function render(){
     renderPanel();renderMoodboard();
     return;
   }
-  renderViewSelectionTools(board,'Cards context');
+  renderViewSelectionTools(board,'Storyboard context');
   if(groupBy==='none'){
     const block=document.createElement('div');block.className='act-block';
     const grid=document.createElement('div');grid.className='scene-grid';

@@ -753,8 +753,8 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
     <button class="sort-btn" id="viewStoryBtn" onclick="setBoardView('story')">Story</button>
     <button class="sort-btn" id="viewScriptBtn" onclick="setBoardView('script')">Script</button>
     <button class="sort-btn active" id="viewCardsBtn" onclick="setBoardView('cards')">Storyboard</button>
-    <button class="sort-btn" id="viewAssetsBtn" onclick="setBoardView('assets')">Assets</button>
     <button class="sort-btn" id="viewSlideshowBtn" onclick="setBoardView('slideshow')">Animatic</button>
+    <button class="sort-btn" id="viewAssetsBtn" onclick="setBoardView('assets')">Assets</button>
   </div>
   <div class="divider"></div>
   <span class="toolbar-label">Group by</span>
@@ -854,8 +854,8 @@ const DEFAULT_BOARD_VIEWS=[
   {key:'story',label:'Story',visible:true},
   {key:'script',label:'Script',visible:true},
   {key:'cards',label:'Storyboard',visible:true},
-  {key:'assets',label:'Assets',visible:true},
-  {key:'slideshow',label:'Animatic',visible:true}
+  {key:'slideshow',label:'Animatic',visible:true},
+  {key:'assets',label:'Assets',visible:true}
 ];
 const FIELD_DEFAULTS=[
   {key:'lyrics',label:'Lyrics',visible:true,defaultOpen:true,kind:'lyrics'},
@@ -1133,7 +1133,8 @@ let viewSettings=loadViewSettings();
 let boardView=loadBoardView();
 let sortField='scene';let sortDir=1;
 let compose=blankCompose();
-let lbMedia=[];let lbIdx=0;
+let lbMedia=[];let lbIdx=0;let lbTitle='';
+let lbAutoTimer=null;
 let dragId=null;
 let storyDragId=null;
 let moodDragId=null;
@@ -1512,7 +1513,7 @@ function normalizeViewSettings(value){
   const byKey=new Map((Array.isArray(parsed)?parsed:[]).map(item=>[item.key,item]));
   const parsedList=Array.isArray(parsed)?parsed:[];
   const parsedKeys=parsedList.map(item=>item.key).join(',');
-  const useDefaultOrder=!parsedList.length||parsedKeys==='script,assets,story,cards,slideshow';
+  const useDefaultOrder=!parsedList.length||['script,assets,story,cards,slideshow','story,script,cards,assets,slideshow'].includes(parsedKeys);
   const sourceOrder=useDefaultOrder?DEFAULT_BOARD_VIEWS:parsedList;
   const ordered=sourceOrder
     .filter(item=>DEFAULT_BOARD_VIEWS.some(view=>view.key===item.key))
@@ -3271,9 +3272,16 @@ function renderViewSelectionTools(parent,label='Select context'){
   const hint=document.createElement('span');hint.className='hint';hint.textContent=label;
   const select=document.createElement('button');select.className='btn btn-sm';select.type='button';select.textContent='Select all';
   select.onclick=selectVisibleWorkspaceItems;
+  if(boardView==='cards'){
+    const slide=document.createElement('button');slide.className='btn btn-sm';slide.type='button';slide.textContent='Slideshow';
+    slide.onclick=openStoryboardImageSlideshow;
+    tools.appendChild(hint);tools.appendChild(select);tools.appendChild(slide);
+  }else{
+    tools.appendChild(hint);tools.appendChild(select);
+  }
   const clear=document.createElement('button');clear.className='btn btn-sm';clear.type='button';clear.textContent='Clear';
   clear.onclick=clearCurrentViewSelection;
-  tools.appendChild(hint);tools.appendChild(select);tools.appendChild(clear);parent.appendChild(tools);
+  tools.appendChild(clear);parent.appendChild(tools);
 }
 function scenesForScope(raw){
   let scope=cleanChatValue(raw||'all');
@@ -6782,12 +6790,31 @@ async function syncMediaButton(button){
 }
 
 // LIGHTBOX
-function openLB(media,idx,title){lbMedia=media;lbIdx=idx;document.getElementById('lightbox').classList.add('open');document.getElementById('lbCap').textContent=title;renderLB();document.addEventListener('keydown',lbKey);}
-function closeLB(){document.getElementById('lightbox').classList.remove('open');document.removeEventListener('keydown',lbKey);const w=document.getElementById('lbWrap');w.querySelectorAll('video').forEach(v=>v.pause());w.innerHTML='';}
-function renderLB(){const w=document.getElementById('lbWrap');w.querySelectorAll('video').forEach(v=>v.pause());w.innerHTML='';const m=lbMedia[lbIdx];if(!m)return;if(m.type==='video'){const v=document.createElement('video');v.src=m.url;v.controls=true;v.autoplay=true;v.className='lb-media';w.appendChild(v);}else{const img=document.createElement('img');img.src=m.url;img.className='lb-media';w.appendChild(img);}document.getElementById('lbCnt').textContent=lbMedia.length>1?`${lbIdx+1} / ${lbMedia.length}`:'';document.getElementById('lbPrev').style.display=lbIdx>0?'flex':'none';document.getElementById('lbNext').style.display=lbIdx<lbMedia.length-1?'flex':'none';}
+function openLB(media,idx,title){lbMedia=media;lbIdx=idx;lbTitle=title||'';document.getElementById('lightbox').classList.add('open');renderLB();document.addEventListener('keydown',lbKey);}
+function closeLB(){stopLBSlideshow();document.getElementById('lightbox').classList.remove('open');document.removeEventListener('keydown',lbKey);const w=document.getElementById('lbWrap');w.querySelectorAll('video').forEach(v=>v.pause());w.innerHTML='';}
+function renderLB(){const w=document.getElementById('lbWrap');w.querySelectorAll('video').forEach(v=>v.pause());w.innerHTML='';const m=lbMedia[lbIdx];if(!m)return;if(m.type==='video'){const v=document.createElement('video');v.src=m.url;v.controls=true;v.autoplay=true;v.className='lb-media';w.appendChild(v);}else{const img=document.createElement('img');img.src=m.url;img.className='lb-media';w.appendChild(img);}document.getElementById('lbCap').textContent=m.caption||lbTitle;document.getElementById('lbCnt').textContent=lbMedia.length>1?`${lbIdx+1} / ${lbMedia.length}`:'';document.getElementById('lbPrev').style.display=lbIdx>0?'flex':'none';document.getElementById('lbNext').style.display=lbIdx<lbMedia.length-1?'flex':'none';}
 function lbNav(d){lbIdx=Math.max(0,Math.min(lbMedia.length-1,lbIdx+d));renderLB();}
 function lbKey(e){if(e.key==='Escape')closeLB();if(e.key==='ArrowLeft')lbNav(-1);if(e.key==='ArrowRight')lbNav(1);}
 document.getElementById('lightbox').onclick=e=>{if(e.target===e.currentTarget)closeLB();};
+function storyboardImageMedia(){
+  return scenes.flatMap(scene=>(scene.media||[])
+    .filter(item=>item&&item.url&&item.type!=='video')
+    .map(item=>({...item,caption:`Scene ${scene.num||''}${scene.title?' — '+scene.title:''}`})));
+}
+function openStoryboardImageSlideshow(){
+  const media=storyboardImageMedia();
+  if(!media.length){toast('No storyboard images to show');return;}
+  openLB(media,0,'Storyboard images');
+  startLBSlideshow();
+}
+function startLBSlideshow(){
+  stopLBSlideshow();
+  lbAutoTimer=setInterval(()=>{
+    if(lbIdx>=lbMedia.length-1){stopLBSlideshow();return;}
+    lbNav(1);
+  },2600);
+}
+function stopLBSlideshow(){if(lbAutoTimer){clearInterval(lbAutoTimer);lbAutoTimer=null;}}
 
 // ── AUDIO ──
 let globalAudio=null;

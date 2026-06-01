@@ -1985,23 +1985,51 @@ function browserCanPreviewHeic(file){
   return !/\.hei[cf]$/i.test(file.name)||/Safari/i.test(navigator.userAgent)&&!/Chrome|Chromium|CriOS/i.test(navigator.userAgent);
 }
 let heicConverterPromise=null;
-function loadHeicConverter(){
-  if(window.heic2any)return Promise.resolve(window.heic2any);
-  if(heicConverterPromise)return heicConverterPromise;
-  heicConverterPromise=new Promise((resolve,reject)=>{
+function currentHeicConverter(){
+  const candidate=window.heic2any?.default||window.heic2any;
+  return typeof candidate==='function'?candidate:null;
+}
+function loadHeicScript(src){
+  return new Promise((resolve,reject)=>{
+    const existing=[...document.scripts].find(script=>script.src===src);
+    if(existing&&currentHeicConverter())return resolve(currentHeicConverter());
     const script=document.createElement('script');
-    script.src='https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
+    script.src=src;
     script.async=true;
-    script.onload=()=>window.heic2any?resolve(window.heic2any):reject(new Error('HEIC converter did not load'));
-    script.onerror=()=>reject(new Error('HEIC converter failed to load'));
+    script.crossOrigin='anonymous';
+    script.onload=()=>currentHeicConverter()?resolve(currentHeicConverter()):reject(new Error('HEIC converter loaded but did not initialize'));
+    script.onerror=()=>reject(new Error('Could not load '+src));
     document.head.appendChild(script);
   });
+}
+async function loadHeicConverter(){
+  const existing=currentHeicConverter();
+  if(existing)return existing;
+  if(heicConverterPromise)return heicConverterPromise;
+  heicConverterPromise=(async()=>{
+    const scriptUrls=[
+      'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js',
+      'https://unpkg.com/heic2any@0.0.4/dist/heic2any.min.js'
+    ];
+    const errors=[];
+    for(const src of scriptUrls){
+      try{return await loadHeicScript(src);}
+      catch(e){errors.push(e.message||String(e));}
+    }
+    try{
+      const mod=await import('https://esm.sh/heic2any@0.0.4');
+      const converter=mod.default||mod.heic2any;
+      if(typeof converter==='function')return converter;
+    }catch(e){errors.push(e.message||String(e));}
+    heicConverterPromise=null;
+    throw new Error(errors.join(' | ')||'HEIC converter unavailable');
+  })();
   return heicConverterPromise;
 }
 async function convertHeicToJpeg(file){
   if(!isHeicFile(file))return file;
   const heic2any=await loadHeicConverter();
-  const converted=await heic2any({blob:file,toType:'image/jpeg',quality:.92});
+  const converted=await heic2any({blob:file,toType:'image/jpeg',quality:0.92});
   const blob=Array.isArray(converted)?converted[0]:converted;
   if(!(blob instanceof Blob))throw new Error('HEIC conversion failed');
   return new File([blob],jpegNameForHeic(file.name),{type:'image/jpeg'});
@@ -5286,8 +5314,10 @@ async function readLocalMediaFiles(files,callback){
       try{
         toast('Converting HEIC to JPEG...',2400);
         file=await convertHeicToJpeg(file);
+        toast('HEIC converted to JPEG',1800);
       }catch(e){
-        toast('Could not convert '+originalFile.name+'. Try exporting it as JPEG first.',5200);
+        console.error('HEIC conversion failed',e);
+        toast('HEIC conversion failed: '+((e&&e.message)||'unknown error'),8000);
         return null;
       }
     }

@@ -3043,18 +3043,25 @@ async function sendChat(value,provider='openai'){
     renderPanel();
     const idx=messages.length-1;
     const reply=isClaude?await runClaudeAgent(text,key):await runOpenAIAgent(text,key);
-    messages[idx]={role:'assistant',text:await applyActionsFromAssistantText(reply)};
+    messages[idx]={role:'assistant',text:await applyActionsFromAssistantText(reply,text)};
   }else{
     const reply=runBoardChat(text);
     messages.push({role:'assistant',text:reply});
   }
   renderPanel();
 }
-async function applyActionsFromAssistantText(reply){
+function fallbackAgentActionsForText(text){
+  const n=normChat(text);
+  const wantsCards=(/\b(make|create|generate|build|turn|convert)\b/.test(n)&&/\b(cards?|cards view|scene cards?|storyboard cards?)\b/.test(n)&&/\b(script|script page|full script)\b/.test(n));
+  if(wantsCards)return [{type:'make_cards_from_script',replace:!/\b(append|add to existing|keep existing)\b/.test(n)}];
+  return [];
+}
+async function applyActionsFromAssistantText(reply,userText=''){
   const payload=parseAgentPayload(reply);
-  if(!payload.actions?.length)return reply;
-  const results=await applyAgentActions(payload.actions);
-  const msg=payload.message||'Done.';
+  const actions=payload.actions?.length?payload.actions:fallbackAgentActionsForText(userText);
+  if(!actions.length)return reply;
+  const results=await applyAgentActions(actions);
+  const msg=payload.actions?.length?(payload.message||'Done.'):'I did not get a usable AI action back, so I used the Script page directly.';
   return results.length?msg+'\n\nApplied: '+results.join(' '):reply;
 }
 function normChat(value){

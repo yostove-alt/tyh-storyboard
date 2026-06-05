@@ -126,6 +126,19 @@ body.panel-closed .panel-rail{left:0;}
 .panel-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 .write-area{display:flex;flex-direction:column;gap:9px;}
 .chat-area{height:100%;min-height:0;display:flex;flex-direction:column;gap:10px;}
+.agent-setup{border:1px solid var(--border);border-radius:var(--r);background:var(--surface-soft);overflow:hidden;}
+.agent-setup summary{list-style:none;cursor:pointer;padding:9px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:700;color:var(--text);}
+.agent-setup summary::-webkit-details-marker{display:none;}
+.agent-setup summary::after{content:'▾';font-family:'DM Mono',monospace;font-size:10px;color:var(--faint);transition:transform .15s;}
+.agent-setup[open] summary::after{transform:rotate(180deg);}
+.agent-setup-meta{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);font-weight:400;margin-left:auto;}
+.agent-setup-meta.on{color:var(--accent);}
+.agent-setup-body{border-top:1px solid var(--border);padding:9px;display:flex;flex-direction:column;gap:8px;}
+.agent-setup-row{display:grid;grid-template-columns:82px minmax(0,1fr);gap:7px;align-items:center;}
+.agent-setup-row label{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);}
+.agent-setup-row input,.agent-setup-row select{min-width:0;width:100%;font-family:'Instrument Sans',sans-serif;font-size:12px;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:var(--rs);padding:7px 8px;outline:none;}
+.agent-setup-row input:focus,.agent-setup-row select:focus{border-color:var(--accent);background:var(--accent-l);}
+.agent-key-row{display:grid;grid-template-columns:minmax(0,1fr) 74px;gap:6px;}
 .chat-config{display:grid;grid-template-columns:minmax(0,1fr) 92px auto;gap:6px;align-items:center;}
 .chat-config input{font-family:'Instrument Sans',sans-serif;font-size:12px;color:var(--text);background:var(--surface-soft);border:1px solid var(--border);border-radius:var(--rs);padding:7px 8px;outline:none;min-width:0;}
 .chat-config input:focus{border-color:var(--accent);background:var(--accent-l);}
@@ -154,8 +167,13 @@ body.panel-closed .panel-rail{left:0;}
 .mention-thumb img,.mention-thumb video{width:100%;height:100%;object-fit:contain;background:#050706;display:block;}
 .mention-title{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .mention-meta{font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;color:var(--faint);margin-top:2px;}
-.agent-ref-tray{border:1px dashed var(--border-strong);border-radius:var(--r);background:var(--surface-soft);padding:8px;display:flex;flex-direction:column;gap:7px;}
+.agent-ref-tray{border:1px dashed var(--border-strong);border-radius:var(--r);background:var(--surface-soft);padding:0;display:block;overflow:hidden;}
 .agent-ref-tray.dragover{border-color:var(--accent);background:var(--accent-l);}
+.agent-ref-tray summary{list-style:none;cursor:pointer;padding:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.agent-ref-tray summary::-webkit-details-marker{display:none;}
+.agent-ref-tray summary::after{content:'▾';font-family:'DM Mono',monospace;font-size:10px;color:var(--faint);}
+.agent-ref-tray[open] summary::after{transform:rotate(180deg);}
+.agent-ref-body{border-top:1px dashed var(--border);padding:8px;display:flex;flex-direction:column;gap:7px;}
 .agent-ref-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .agent-ref-title{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
 .agent-ref-actions{display:flex;gap:5px;align-items:center;}
@@ -2792,41 +2810,9 @@ function setAgentProvider(value){
 function renderAIChat(b,provider){
   const isClaude=provider==='claude';
   const messages=isClaude?claudeMessages:chatMessages;
-  const getKey=isClaude?getClaudeKey:getOpenAIKey;
-  const setKey=isClaude?setClaudeKey:setOpenAIKey;
-  const getModel=isClaude?getClaudeModel:getOpenAIModel;
-  const setModel=isClaude?setClaudeModel:setOpenAIModel;
   const name=isClaude?'Claude':'ChatGPT';
   const w=document.createElement('div');w.className='chat-area';
-  const picker=document.createElement('div');picker.className='song-row';
-  const providerSel=document.createElement('select');
-  [['openai','ChatGPT'],['claude','Claude']].forEach(([value,label])=>{const o=document.createElement('option');o.value=value;o.textContent=label;providerSel.appendChild(o);});
-  providerSel.value=provider;
-  providerSel.onchange=()=>setAgentProvider(providerSel.value);
-  picker.appendChild(providerSel);w.appendChild(picker);
-  const cfg=document.createElement('div');cfg.className='chat-config';
-  const key=document.createElement('input');key.type='password';key.placeholder=(isClaude?'Anthropic':'OpenAI')+' API key';key.value=getKey();
-  key.onchange=()=>{setKey(key.value);renderPanel();};
-  const model=document.createElement('input');model.type='text';model.placeholder='Model';model.value=getModel();
-  model.onchange=()=>{setModel(model.value);renderPanel();};
-  const clear=document.createElement('button');clear.className='btn btn-sm';clear.textContent=getKey()?'Clear':'Local';
-  clear.onclick=()=>{if(getKey()){setKey('');renderPanel();}};
-  const status=document.createElement('div');status.className='chat-status'+(getKey()?' on':'');status.textContent=getKey()?(isClaude?'Claude connected':'OpenAI connected'):'Local commands';
-  cfg.appendChild(key);cfg.appendChild(model);cfg.appendChild(clear);cfg.appendChild(status);
-  const imageGen=document.createElement('select');
-  [
-    ['openai-gpt-image-2','Images: GPT Image 2'],
-    ['gemini-nano-banana-pro','Images: Nano Banana Pro']
-  ].forEach(([value,label])=>{const o=document.createElement('option');o.value=value;o.textContent=label;imageGen.appendChild(o);});
-  imageGen.value=getImageGenerator();
-  imageGen.onchange=()=>{setImageGenerator(imageGen.value);renderPanel();};
-  cfg.appendChild(imageGen);
-  if(getImageGenerator()==='gemini-nano-banana-pro'){
-    const geminiKey=document.createElement('input');geminiKey.type='password';geminiKey.placeholder='Gemini API key';geminiKey.value=getGeminiKey();
-    geminiKey.onchange=()=>{setGeminiKey(geminiKey.value);renderPanel();};
-    const geminiStatus=document.createElement('div');geminiStatus.className='chat-status'+(getGeminiKey()?' on':'');geminiStatus.textContent=getGeminiKey()?'Nano Banana Pro ready':'Needs Gemini key';
-    cfg.appendChild(geminiKey);cfg.appendChild(geminiStatus);
-  }
+  const setup=renderAgentSetup(provider);
   const log=document.createElement('div');log.className='chat-log';
   messages.forEach(msg=>{
     const row=document.createElement('div');row.className='chat-msg '+msg.role;
@@ -2841,8 +2827,63 @@ function renderAIChat(b,provider){
   input.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat(input.value,provider);}};
   const mic=createAgentMicButton(input);
   const send=document.createElement('button');send.className='btn btn-primary chat-send';send.textContent='Send';send.onclick=()=>sendChat(input.value,provider);
-  box.appendChild(input);box.appendChild(mentionPicker);box.appendChild(mic);box.appendChild(send);w.appendChild(cfg);w.appendChild(renderAgentReferenceTray());w.appendChild(renderAgentSuggestions(provider));w.appendChild(log);w.appendChild(box);b.appendChild(w);
+  box.appendChild(input);box.appendChild(mentionPicker);box.appendChild(mic);box.appendChild(send);
+  w.appendChild(setup);w.appendChild(renderAgentReferenceTray());w.appendChild(renderAgentSuggestions(provider));w.appendChild(log);w.appendChild(box);b.appendChild(w);
   requestAnimationFrame(()=>{log.scrollTop=log.scrollHeight;input.focus();});
+}
+
+function renderAgentSetup(provider){
+  const isClaude=provider==='claude';
+  const getKey=isClaude?getClaudeKey:getOpenAIKey;
+  const setKey=isClaude?setClaudeKey:setOpenAIKey;
+  const getModel=isClaude?getClaudeModel:getOpenAIModel;
+  const setModel=isClaude?setClaudeModel:setOpenAIModel;
+  const setup=document.createElement('details');setup.className='agent-setup';
+  const summary=document.createElement('summary');
+  const label=document.createElement('span');label.textContent='Agent setup';
+  const meta=document.createElement('span');meta.className='agent-setup-meta'+(getKey()?' on':'');meta.textContent=(isClaude?'Claude':'ChatGPT')+' · '+(getKey()?'Connected':'Local');
+  summary.appendChild(label);summary.appendChild(meta);setup.appendChild(summary);
+  const body=document.createElement('div');body.className='agent-setup-body';
+  const providerRow=document.createElement('div');providerRow.className='agent-setup-row';
+  const providerLabel=document.createElement('label');providerLabel.textContent='Agent';
+  const providerSel=document.createElement('select');
+  [['openai','ChatGPT'],['claude','Claude']].forEach(([value,label])=>{const o=document.createElement('option');o.value=value;o.textContent=label;providerSel.appendChild(o);});
+  providerSel.value=provider;
+  providerSel.onchange=()=>setAgentProvider(providerSel.value);
+  providerRow.appendChild(providerLabel);providerRow.appendChild(providerSel);body.appendChild(providerRow);
+  const keyRow=document.createElement('div');keyRow.className='agent-setup-row';
+  const keyLabel=document.createElement('label');keyLabel.textContent='API key';
+  const keyWrap=document.createElement('div');keyWrap.className='agent-key-row';
+  const key=document.createElement('input');key.type='password';key.placeholder=(isClaude?'Anthropic':'OpenAI')+' API key';key.value=getKey();
+  key.onchange=()=>{setKey(key.value);renderPanel();};
+  const clear=document.createElement('button');clear.className='btn btn-sm';clear.textContent=getKey()?'Clear':'Local';
+  clear.onclick=()=>{if(getKey()){setKey('');renderPanel();}};
+  keyWrap.appendChild(key);keyWrap.appendChild(clear);keyRow.appendChild(keyLabel);keyRow.appendChild(keyWrap);body.appendChild(keyRow);
+  const modelRow=document.createElement('div');modelRow.className='agent-setup-row';
+  const modelLabel=document.createElement('label');modelLabel.textContent='Model';
+  const model=document.createElement('input');model.type='text';model.placeholder='Model';model.value=getModel();
+  model.onchange=()=>{setModel(model.value);renderPanel();};
+  modelRow.appendChild(modelLabel);modelRow.appendChild(model);body.appendChild(modelRow);
+  const imageRow=document.createElement('div');imageRow.className='agent-setup-row';
+  const imageLabel=document.createElement('label');imageLabel.textContent='Images';
+  const imageGen=document.createElement('select');
+  [
+    ['openai-gpt-image-2','Images: GPT Image 2'],
+    ['gemini-nano-banana-pro','Images: Nano Banana Pro']
+  ].forEach(([value,label])=>{const o=document.createElement('option');o.value=value;o.textContent=label;imageGen.appendChild(o);});
+  imageGen.value=getImageGenerator();
+  imageGen.onchange=()=>{setImageGenerator(imageGen.value);renderPanel();};
+  imageRow.appendChild(imageLabel);imageRow.appendChild(imageGen);body.appendChild(imageRow);
+  if(getImageGenerator()==='gemini-nano-banana-pro'){
+    const geminiRow=document.createElement('div');geminiRow.className='agent-setup-row';
+    const geminiLabel=document.createElement('label');geminiLabel.textContent='Gemini';
+    const geminiKey=document.createElement('input');geminiKey.type='password';geminiKey.placeholder='Gemini API key';geminiKey.value=getGeminiKey();
+    geminiKey.onchange=()=>{setGeminiKey(geminiKey.value);renderPanel();};
+    const geminiStatus=document.createElement('div');geminiStatus.className='chat-status'+(getGeminiKey()?' on':'');geminiStatus.textContent=getGeminiKey()?'Nano Banana Pro ready':'Needs Gemini key';
+    geminiRow.appendChild(geminiLabel);geminiRow.appendChild(geminiKey);body.appendChild(geminiRow);body.appendChild(geminiStatus);
+  }
+  setup.appendChild(body);
+  return setup;
 }
 
 function renderAgentSuggestions(provider){
@@ -2926,16 +2967,22 @@ function createAgentMicButton(input){
 }
 
 function renderAgentReferenceTray(){
-  const tray=document.createElement('div');tray.className='agent-ref-tray';
+  const tray=document.createElement('details');tray.className='agent-ref-tray';
+  if(agentPromptReferences.length)tray.open=true;
+  const summary=document.createElement('summary');
+  const summaryTitle=document.createElement('div');summaryTitle.className='agent-ref-title';summaryTitle.textContent='Reference images';
+  const summaryMeta=document.createElement('div');summaryMeta.className='agent-setup-meta';summaryMeta.textContent=agentPromptReferences.length?agentPromptReferences.length+' attached':'Optional';
+  summary.appendChild(summaryTitle);summary.appendChild(summaryMeta);tray.appendChild(summary);
+  const body=document.createElement('div');body.className='agent-ref-body';
   const head=document.createElement('div');head.className='agent-ref-head';
-  const title=document.createElement('div');title.className='agent-ref-title';title.textContent='Prompt reference images';
+  const title=document.createElement('div');title.className='agent-ref-empty';title.textContent='Upload images here when you want the next image generation to use them as visual references.';
   const actions=document.createElement('div');actions.className='agent-ref-actions';
   const input=document.createElement('input');input.type='file';input.accept='image/*,.heic,.heif';input.multiple=true;input.style.display='none';
   input.onchange=()=>addAgentPromptReferenceFiles(Array.from(input.files||[]));
   const add=document.createElement('button');add.className='btn btn-sm';add.type='button';add.textContent='+ Images';add.onclick=()=>input.click();
   const clear=document.createElement('button');clear.className='btn btn-sm';clear.type='button';clear.textContent='Clear';clear.onclick=()=>{agentPromptReferences.forEach(ref=>{if(ref.objectUrl)URL.revokeObjectURL(ref.objectUrl);});agentPromptReferences=[];renderPanel();};
   actions.appendChild(add);if(agentPromptReferences.length)actions.appendChild(clear);
-  head.appendChild(title);head.appendChild(actions);tray.appendChild(head);tray.appendChild(input);
+  head.appendChild(title);head.appendChild(actions);body.appendChild(head);body.appendChild(input);
   if(agentPromptReferences.length){
     const grid=document.createElement('div');grid.className='agent-ref-grid';
     agentPromptReferences.forEach((ref,i)=>{
@@ -2945,11 +2992,12 @@ function renderAgentReferenceTray(){
       remove.onclick=()=>{const [gone]=agentPromptReferences.splice(i,1);if(gone?.objectUrl)URL.revokeObjectURL(gone.objectUrl);renderPanel();};
       card.appendChild(remove);grid.appendChild(card);
     });
-    tray.appendChild(grid);
+    body.appendChild(grid);
   }else{
     const empty=document.createElement('div');empty.className='agent-ref-empty';empty.textContent='Upload or drop image references here. They will be attached to the next image-generation request.';
-    tray.appendChild(empty);
+    body.appendChild(empty);
   }
+  tray.appendChild(body);
   ['dragenter','dragover'].forEach(type=>tray.addEventListener(type,e=>{e.preventDefault();tray.classList.add('dragover');}));
   ['dragleave','drop'].forEach(type=>tray.addEventListener(type,e=>{e.preventDefault();tray.classList.remove('dragover');}));
   tray.addEventListener('drop',e=>addAgentPromptReferenceFiles(Array.from(e.dataTransfer?.files||[])));

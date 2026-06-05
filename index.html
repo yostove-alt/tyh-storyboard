@@ -762,6 +762,19 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
     </div>
   </details>
 
+  <details class="toolbar-menu">
+    <summary class="toolbar-menu-btn">Group: <span id="groupLabel">Act</span></summary>
+    <div class="toolbar-popover group-popover">
+      <div class="sort-group">
+        <button class="sort-btn active" id="grpAct" onclick="setGroup('act')">Act</button>
+        <button class="sort-btn" id="grpLoc" onclick="setGroup('location')">Location</button>
+        <button class="sort-btn" id="grpStatus" onclick="setGroup('status')">Status</button>
+        <button class="sort-btn" id="grpCam" onclick="setGroup('camera')">Camera</button>
+        <button class="sort-btn" id="grpNone" onclick="setGroup('none')">None</button>
+      </div>
+    </div>
+  </details>
+
   <div class="search-wrap">
     <svg class="search-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
     <input type="text" id="searchBox" placeholder="Search scenes…" oninput="applyFilters()">
@@ -775,18 +788,6 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
     <button class="sort-btn" id="viewSlideshowBtn" onclick="setBoardView('slideshow')">Animatic</button>
     <button class="sort-btn" id="viewAssetsBtn" onclick="setBoardView('assets')">Assets</button>
   </div>
-  <details class="toolbar-menu">
-    <summary class="toolbar-menu-btn">Group: <span id="groupLabel">Act</span></summary>
-    <div class="toolbar-popover group-popover">
-      <div class="sort-group">
-        <button class="sort-btn active" id="grpAct" onclick="setGroup('act')">Act</button>
-        <button class="sort-btn" id="grpLoc" onclick="setGroup('location')">Location</button>
-        <button class="sort-btn" id="grpStatus" onclick="setGroup('status')">Status</button>
-        <button class="sort-btn" id="grpCam" onclick="setGroup('camera')">Camera</button>
-        <button class="sort-btn" id="grpNone" onclick="setGroup('none')">None</button>
-      </div>
-    </div>
-  </details>
 </div>
 
 <div class="selection-bar" id="selectionBar"></div>

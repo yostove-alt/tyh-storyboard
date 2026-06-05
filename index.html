@@ -164,10 +164,11 @@ body.panel-closed .panel-rail{left:0;}
 .agent-ref-card img{width:100%;height:100%;object-fit:contain;display:block;background:#050706;}
 .agent-ref-card button{position:absolute;top:3px;right:3px;width:18px;height:18px;border:1px solid rgba(255,255,255,.45);border-radius:999px;background:rgba(5,7,6,.72);color:#fff;font-size:12px;line-height:1;cursor:pointer;}
 .agent-ref-empty{font-size:11px;color:var(--muted);line-height:1.35;}
-.agent-suggestions{border:1px solid var(--border);border-radius:var(--r);background:var(--surface-soft);padding:8px;display:flex;flex-direction:column;gap:6px;}
+.agent-suggestions{border:1px solid var(--border);border-radius:var(--r);background:var(--surface-soft);padding:8px;display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center;}
 .agent-suggestions-title{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);}
-.agent-suggestion{border:1px solid var(--border);border-radius:var(--rs);background:var(--surface);color:var(--text);font-family:'Instrument Sans',sans-serif;font-size:12px;text-align:left;padding:7px 8px;cursor:pointer;line-height:1.3;}
-.agent-suggestion:hover{border-color:var(--accent);background:var(--accent-l);color:var(--accent);}
+.agent-suggestions-title{grid-column:1/-1;}
+.agent-suggestion-select{min-width:0;width:100%;border:1px solid var(--border);border-radius:var(--rs);background:var(--surface);color:var(--text);font-family:'Instrument Sans',sans-serif;font-size:12px;padding:7px 8px;outline:none;}
+.agent-suggestion-select:focus{border-color:var(--accent);background:var(--accent-l);}
 .lyrics-panel{display:flex;flex-direction:column;gap:10px;}
 .song-card{border:1px solid var(--border);border-radius:var(--r);background:var(--surface-soft);padding:10px;display:flex;flex-direction:column;gap:8px;}
 .song-row{display:flex;gap:7px;align-items:center;}
@@ -2849,11 +2850,16 @@ function renderAgentSuggestions(provider){
   const wrap=document.createElement('div');wrap.className='agent-suggestions';
   const title=document.createElement('div');title.className='agent-suggestions-title';title.textContent='Would you like to…';
   wrap.appendChild(title);
-  suggestions.forEach(item=>{
-    const btn=document.createElement('button');btn.type='button';btn.className='agent-suggestion';btn.textContent=item.label;
-    btn.onclick=()=>sendChat(item.prompt,provider);
-    wrap.appendChild(btn);
+  const select=document.createElement('select');select.className='agent-suggestion-select';
+  const starter=document.createElement('option');starter.value='';starter.textContent='Choose a suggested action';select.appendChild(starter);
+  suggestions.forEach((item,i)=>{
+    const opt=document.createElement('option');opt.value=String(i);opt.textContent=item.label;select.appendChild(opt);
   });
+  const use=document.createElement('button');use.type='button';use.className='btn btn-sm';use.textContent='Use';
+  use.onclick=()=>{const item=suggestions[parseInt(select.value,10)];if(item)sendChat(item.prompt,provider);};
+  select.onchange=()=>{use.disabled=!select.value;};
+  use.disabled=true;
+  wrap.appendChild(select);wrap.appendChild(use);
   return wrap;
 }
 

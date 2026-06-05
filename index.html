@@ -25,6 +25,11 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
 .hdr-brand h1{font-family:'DM Serif Display',serif;font-size:22px;letter-spacing:-.2px;}
 .hdr-brand .proj{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);}
 .hdr-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.hdr-menu{position:relative;}
+.hdr-menu summary{list-style:none;}
+.hdr-menu summary::-webkit-details-marker{display:none;}
+.hdr-menu-pop{position:absolute;right:0;top:calc(100% + 7px);z-index:260;min-width:160px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);padding:7px;display:grid;gap:6px;}
+.hdr-menu-pop .btn{width:100%;justify-content:flex-start;text-align:left;}
 .main-menu-btn{border-color:var(--accent);color:var(--accent);background:var(--accent-l);}
 .main-menu-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent);}
 .btn{font-family:'Instrument Sans',sans-serif;font-size:12px;font-weight:600;padding:7px 13px;border-radius:var(--rs);border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;transition:all .15s;white-space:nowrap;}
@@ -235,7 +240,7 @@ body.panel-closed .panel-rail{left:0;}
 /* ── BOARD ── */
 .board{flex:1;padding:24px 28px 88px;overflow-y:auto;min-width:0;}
 body.panel-closed .board{padding-left:56px;}
-body.view-only .write-panel,body.view-only .panel-rail,body.view-only .mood-panel,body.view-only .mood-rail,body.view-only .selection-bar,body.view-only .scene-select,body.view-only .drag-hdl,body.view-only .card-footer,body.view-only .sw-overlay,body.view-only .add-scene-card,body.view-only .add-act-row,body.view-only .story-check,body.view-only .story-drag,body.view-only .story-actions,body.view-only .mood-actions,body.view-only .hdr>label,body.view-only #saveCloudBtn,body.view-only .cloud-edit-action,body.view-only .main-menu-btn,body.view-only .hdr-actions button:last-child{display:none!important;}
+body.view-only .write-panel,body.view-only .panel-rail,body.view-only .mood-panel,body.view-only .mood-rail,body.view-only .selection-bar,body.view-only .scene-select,body.view-only .drag-hdl,body.view-only .card-footer,body.view-only .sw-overlay,body.view-only .add-scene-card,body.view-only .add-act-row,body.view-only .story-check,body.view-only .story-drag,body.view-only .story-actions,body.view-only .mood-actions,body.view-only .hdr>label,body.view-only #saveCloudBtn,body.view-only .cloud-edit-action,body.view-only .main-menu-btn,body.view-only .desktop-extra-action{display:none!important;}
 body.view-only .board{padding-left:28px;}
 body.view-only .scene-card select,body.view-only .scene-card input:not([type="range"]),body.view-only .multi-select{pointer-events:none;}
 
@@ -710,8 +715,13 @@ body.viewer-portrait .thumb-strip{justify-content:center;}
     <button class="btn btn-sm main-menu-btn" onclick="showStoryboardMenu()">Main menu</button>
     <button class="btn btn-primary btn-sm" id="saveCloudBtn" onclick="saveToCloud()">Save shared</button>
     <button class="btn btn-sm cloud-edit-action" onclick="openVersionHistory()">Versions</button>
-    <button class="btn btn-gold btn-sm desktop-extra-action" onclick="window.print()">PDF</button>
-    <button class="btn btn-sm desktop-extra-action" onclick="exportJSON()">Export</button>
+    <details class="hdr-menu desktop-extra-action">
+      <summary class="btn btn-sm">Export</summary>
+      <div class="hdr-menu-pop">
+        <button class="btn btn-sm" onclick="exportJSON()">Project file</button>
+        <button class="btn btn-sm btn-gold" onclick="window.print()">PDF</button>
+      </div>
+    </details>
   </div>
 </div>
 
